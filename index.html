@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#5354FE">
+<title>HanziLens · 拼音朗读跟读 · النطق والتكرار</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!-- pinyin-pro: accurate pinyin for all Chinese characters -->
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
+
+<style>
+:root{
+  --bg: #f8f8ff;
+  --surface: rgba(255,255,255,0.94);
+  --surface-strong: #ffffff;
+  --text: #1f252b;
+  --text-soft: #5f6b74;
+  --text-faint: #8b949c;
+  --border: rgba(31,37,43,0.08);
+  --border-strong: rgba(31,37,43,0.16);
+
+  --accent: #5354FE;
+  --accent-strong: #3E3FC4;
+  --accent-soft: rgba(83,84,254,0.12);
+
+  --success: #059669;
+  --success-soft: rgba(5,150,105,0.12);
+  --warning: #D97706;
+  --warning-soft: rgba(217,119,6,0.12);
+  --danger: #E11D48;
+  --danger-soft: rgba(225,29,72,0.10);
+
+  /* Pinyin tone colors — high-saturation, Pingo AI inspired */
+  --tone1: #5354FE; /* high level - 品牌紫 */
+  --tone2: #059669; /* rising - 翠绿 */
+  --tone3: #D97706; /* dipping - 明橙 */
+  --tone4: #E11D48; /* falling - 亮红 */
+  --tone0: #71717A; /* neutral - 中灰 */
+
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
+
+  --shadow-sm: 0 4px 12px rgba(83,84,254,0.06);
+  --shadow-md: 0 12px 32px rgba(83,84,254,0.10);
+  --shadow-lg: 0 24px 60px rgba(83,84,254,0.14);
+
+  --font-han: "Kaiti SC","STKaiti","KaiTi","楷体","BiauKai",serif;
+  --font-ui: -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI","PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --font-ar: "Noto Naskh Arabic","Noto Sans Arabic","Amiri","Cairo",sans-serif;
+  --font-py:  "Nunito","SF Pro Rounded",ui-rounded,ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --font-mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; overflow-x:hidden; }
+body{
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(83,84,254,0.06), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(83,84,254,0.04), transparent 24%),
+    linear-gradient(180deg, #fbfbff 0%, #f0efff 100%);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.wrap{
+  width: min(960px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 28px 0 80px;
+}
+
+/* ========== HEADER ========== */
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 12px 20px;
+  margin-bottom: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px);
+}
+.brand{ display:flex; flex-direction:column; gap:1px; }
+.brand-title{
+  font-family: var(--font-han);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.brand-sub{
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-ar);
+  letter-spacing: 0.04em;
+}
+.header-stats{
+  display:flex; gap:12px; align-items:center;
+  font-size: 12px;
+  color: var(--text-soft);
+  font-family: var(--font-ar);
+}
+.stat-pill{
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(83,84,254,0.06);
+  display:flex; gap:5px; align-items:center;
+}
+.stat-pill.streak{
+  background: rgba(217,119,6,0.10);
+  border-color: rgba(217,119,6,0.25);
+  animation: streakIn 0.4s cubic-bezier(.22,.61,.36,1);
+}
+.stat-pill.streak b{ color: var(--warning); }
+@keyframes streakIn{
+  from{ opacity: 0; transform: scale(0.85); }
+  to{ opacity: 1; transform: scale(1); }
+}
+.stat-pill b{ color: var(--accent-strong); font-weight:600; }
+
+/* ========== SECTION CARD ========== */
+.card{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px);
+}
+.card-head{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+.card-title{
+  font-family: var(--font-ar);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+.card-title .cn{
+  font-family: var(--font-han);
+  font-size: 14px;
+  color: var(--text-soft);
+  margin-inline-start: 6px;
+  font-weight: 500;
+}
+.card-note{
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-ar);
+}
+
+/* ========== EDITOR ========== */
+.editor-wrap{ position: relative; }
+.editor{
+  width: 100%;
+  min-height: 90px;
+  padding: 14px 16px;
+  font-family: var(--font-han);
+  font-size: 19px;
+  line-height: 1.8;
+  color: var(--text);
+  background: rgba(249,247,243,0.7);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  outline: none;
+  direction: ltr;
+  text-align: left;
+  transition: border-color 0.18s, background 0.18s;
+}
+.editor::placeholder{
+  font-family: var(--font-ar);
+  font-size: 13px;
+  color: var(--text-faint);
+  direction: rtl;
+}
+.editor:focus{
+  border-color: var(--accent);
+  background: #fff;
+}
+
+/* example chips */
+.examples{
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px;
+}
+.example-btn{
+  padding: 6px 12px;
+  font-family: var(--font-ar);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.example-btn:hover{
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.example-btn .cn{
+  font-family: var(--font-han);
+  color: var(--text);
+  margin-inline-start: 6px;
+  font-size: 13px;
+}
+
+/* ========== CONTROLS ========== */
+.controls{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  align-items: center;
+}
+.btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-family: var(--font-ar);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.18s;
+  min-height: 42px;
+}
+.btn .cn{
+  font-family: var(--font-han);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.btn:hover{
+  border-color: var(--accent);
+  background: rgba(83,84,254,0.05);
+}
+.btn.primary{
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(83,84,254,0.28);
+}
+.btn.primary .cn{ color: rgba(255,255,255,0.85); }
+.btn.primary:hover{ background: var(--accent-strong); }
+.btn.success{
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+.btn.success .cn{ color: rgba(255,255,255,0.85); }
+.btn.danger{
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.btn:disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.speed-group{
+  display: flex; align-items: center; gap: 8px;
+  margin-inline-start: auto;
+  padding: 6px 12px;
+  background: rgba(83,84,254,0.05);
+  border-radius: 999px;
+}
+.speed-group label{
+  font-size: 11px;
+  font-family: var(--font-ar);
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+#speedSlider{
+  width: 90px;
+  accent-color: var(--accent);
+}
+#speedVal{
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent-strong);
+  font-weight: 600;
+  min-width: 36px;
+  text-align: center;
+}
+
+/* ========== PINYIN DISPLAY ========== */
+.pinyin-stage{
+  margin-top: 8px;
+  padding: 24px 20px;
+  background: linear-gradient(180deg, #fcfcff 0%, #f5f4ff 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-height: 130px;
+  direction: ltr;
+}
+.pinyin-stage.empty::before{
+  content: 'أدخل نصاً صينياً أعلاه · 在上方输入中文';
+  display: block;
+  text-align: center;
+  font-family: var(--font-ar);
+  font-size: 13px;
+  color: var(--text-faint);
+  padding: 24px 0;
+  direction: rtl;
+}
+.pinyin-row{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  justify-content: center;
+  align-items: flex-end;
+}
+.char-block{
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--surface-strong);
+  border: 0.5px solid var(--border);
+  box-shadow: 0 2px 8px rgba(83,84,254,0.05);
+  transition: background 0.18s, transform 0.15s, box-shadow 0.18s, border-color 0.18s;
+  min-width: 46px;
+}
+.char-block:hover{
+  background: rgba(83,84,254,0.04);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(83,84,254,0.14);
+  border-color: var(--accent);
+}
+.char-block.is-active{
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  box-shadow: 0 8px 20px rgba(83,84,254,0.20);
+}
+.char-block.is-punct{
+  cursor: default;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.char-block.is-punct:hover{
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+.cb-py{
+  font-family: var(--font-py);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+.cb-han{
+  font-family: var(--font-han);
+  font-size: 30px;
+  line-height: 1.1;
+  color: var(--text);
+}
+.char-block.is-punct .cb-han{ font-size: 24px; color: var(--text-soft); }
+.char-block.is-punct .cb-py{ visibility: hidden; }
+
+.tone1 .cb-py, .tone1 .cb-han{ color: var(--tone1); }
+.tone2 .cb-py, .tone2 .cb-han{ color: var(--tone2); }
+.tone3 .cb-py, .tone3 .cb-han{ color: var(--tone3); }
+.tone4 .cb-py, .tone4 .cb-han{ color: var(--tone4); }
+.tone0 .cb-py, .tone0 .cb-han{ color: var(--tone0); }
+
+/* tone legend */
+.tone-legend{
+  display: flex; flex-wrap: wrap; gap: 12px;
+  justify-content: center;
+  margin-top: 14px;
+  font-family: var(--font-ar);
+  font-size: 11px;
+  color: var(--text-soft);
+  direction: rtl;
+}
+.tone-legend span{
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.tone-dot{
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+
+/* ========== READING NOW HIGHLIGHT ========== */
+.reading-status{
+  display: none;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 10px;
+  font-size: 12px;
+  font-family: var(--font-ar);
+  color: var(--accent-strong);
+  direction: rtl;
+}
+.reading-status.is-on{ display: flex; align-items:center; gap: 10px; }
+.wave{ display:inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+.wave span{
+  display: inline-block;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: wave 1s ease-in-out infinite;
+}
+.wave span:nth-child(1){ height:40%; animation-delay:0s; }
+.wave span:nth-child(2){ height:80%; animation-delay:0.15s; }
+.wave span:nth-child(3){ height:60%; animation-delay:0.3s; }
+.wave span:nth-child(4){ height:90%; animation-delay:0.45s; }
+@keyframes wave{
+  0%,100%{ transform: scaleY(0.5); }
+  50%{ transform: scaleY(1); }
+}
+
+/* ========== ECHO / FEEDBACK SECTION ========== */
+.echo-card{
+  background: linear-gradient(135deg, rgba(83,84,254,0.05), rgba(83,84,254,0.01));
+  border: 1.5px solid rgba(83,84,254,0.18);
+}
+.echo-target{
+  padding: 18px;
+  background: var(--surface-strong);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-height: 80px;
+  direction: ltr;
+}
+.echo-target.empty{
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-ar);
+  font-size: 13px;
+  color: var(--text-faint);
+  direction: rtl;
+}
+.echo-controls{
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin-top: 14px;
+  align-items: center;
+}
+.btn.mic{
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 22px;
+  min-height: 56px;
+  height: 56px;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(83,84,254,0.32);
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+}
+.btn.mic .cn{ color: rgba(255,255,255,0.86); }
+.btn.mic:hover{
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(83,84,254,0.40);
+}
+.btn.mic.is-recording{
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  animation: pulseMic 1.4s ease-out infinite;
+}
+@keyframes pulseMic{
+  0%{
+    box-shadow: 0 8px 24px rgba(83,84,254,0.32),
+                0 0 0 0 rgba(83,84,254,0.50),
+                0 0 0 0 rgba(83,84,254,0.25);
+  }
+  70%{
+    box-shadow: 0 8px 24px rgba(83,84,254,0.32),
+                0 0 0 14px rgba(83,84,254,0),
+                0 0 0 28px rgba(83,84,254,0);
+  }
+  100%{
+    box-shadow: 0 8px 24px rgba(83,84,254,0.32),
+                0 0 0 0 rgba(83,84,254,0),
+                0 0 0 0 rgba(83,84,254,0);
+  }
+}
+/* legacy pulse keeps working for any other element */
+@keyframes pulse{
+  0%,100%{ box-shadow: 0 0 0 0 rgba(83,84,254,0.45); }
+  50%{ box-shadow: 0 0 0 10px rgba(83,84,254,0); }
+}
+
+/* Feedback panel — Pingo AI style */
+.feedback-panel{
+  display: none;
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid;
+  animation: slideIn 0.35s ease-out;
+}
+@keyframes slideIn{
+  from{ opacity: 0; transform: translateY(-6px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+.feedback-panel.is-on{ display: block; }
+.feedback-panel.score-excellent{
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+.feedback-panel.score-good{
+  background: rgba(83,84,254,0.10);
+  border-color: var(--accent);
+}
+.feedback-panel.score-ok{
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+.feedback-panel.score-low{
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+.fb-head{
+  display: flex; align-items: center; gap: 18px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+/* Ring score — Pingo AI style */
+.fb-ring-wrap{
+  position: relative;
+  width: 84px; height: 84px;
+  flex-shrink: 0;
+}
+.fb-ring{
+  width: 84px; height: 84px;
+  transform: rotate(-90deg);
+}
+.fb-ring-track{
+  stroke: rgba(31,37,43,0.08);
+}
+.fb-ring-fill{
+  stroke: var(--accent);
+  transition: stroke-dashoffset 0.9s cubic-bezier(.22,.61,.36,1), stroke 0.3s;
+}
+.fb-ring-center{
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column;
+  align-items: center; gap: 0;
+  pointer-events: none;
+}
+.fb-score{
+  font-family: var(--font-py);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-strong);
+}
+.fb-score-unit{
+  font-size: 10px;
+  color: var(--text-soft);
+  margin-top: 1px;
+  font-weight: 500;
+}
+.score-excellent .fb-score{ color: var(--success); }
+.score-excellent .fb-ring-fill{ stroke: var(--success); }
+.score-good .fb-score{ color: var(--accent-strong); }
+.score-good .fb-ring-fill{ stroke: var(--accent); }
+.score-ok .fb-score{ color: var(--warning); }
+.score-ok .fb-ring-fill{ stroke: var(--warning); }
+.score-low .fb-score{ color: var(--danger); }
+.score-low .fb-ring-fill{ stroke: var(--danger); }
+
+.fb-label{
+  display: flex; flex-direction: column; gap: 2px;
+  font-family: var(--font-ar);
+  direction: rtl;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.fb-label-ar{ font-size: 17px; font-weight: 700; line-height: 1.3; }
+.fb-label-cn{
+  font-family: var(--font-han);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.score-excellent .fb-label-ar{ color: var(--success); }
+.score-good .fb-label-ar{ color: var(--accent-strong); }
+.score-ok .fb-label-ar{ color: var(--warning); }
+.score-low .fb-label-ar{ color: var(--danger); }
+
+/* Sub-dimension scores (initial / final / tone) */
+.fb-subscores{
+  display: flex; flex-direction: column; gap: 9px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.55);
+  border-radius: 12px;
+}
+.fb-sub-row{
+  display: flex; align-items: center; gap: 10px;
+}
+.fb-sub-label{
+  font-family: var(--font-ar);
+  font-size: 11px;
+  color: var(--text-soft);
+  min-width: 110px;
+  text-align: right;
+  direction: rtl;
+  font-weight: 500;
+}
+.fb-sub-track{
+  flex: 1;
+  height: 7px;
+  background: rgba(31,37,43,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fb-sub-fill{
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.9s cubic-bezier(.22,.61,.36,1);
+}
+.fb-sub-val{
+  font-family: var(--font-py);
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 30px;
+  text-align: right;
+  color: var(--text);
+}
+
+.fb-detail{
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.fb-detail-k{
+  font-family: var(--font-ar);
+  color: var(--text-soft);
+  direction: rtl;
+}
+.fb-detail-v{
+  font-family: var(--font-han);
+  color: var(--text);
+  direction: ltr;
+  font-size: 13px;
+}
+.fb-detail-v .ok{ color: var(--success); font-weight: 600; }
+.fb-detail-v .bad{ color: var(--danger); font-weight: 600; text-decoration: underline; text-decoration-color: rgba(225,29,72,0.4); text-decoration-thickness: 2px; }
+
+.fb-tip{
+  font-family: var(--font-ar);
+  font-size: 12px;
+  color: var(--text-soft);
+  direction: rtl;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 8px;
+  line-height: 1.7;
+}
+.fb-actions{
+  display: flex; gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.fb-actions .btn{ padding: 7px 14px; font-size: 12px; min-height: 36px; }
+
+/* per-char accuracy chips inside echo target */
+.ec-char{
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.3s;
+  min-width: 36px;
+}
+.ec-char.ok{ background: var(--success-soft); }
+.ec-char.bad{ background: var(--danger-soft); }
+.ec-han{
+  font-family: var(--font-han);
+  font-size: 24px;
+  line-height: 1.2;
+}
+.ec-py{
+  font-family: var(--font-py);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.ec-char.ok .ec-han{ color: var(--success); }
+.ec-char.bad .ec-han{ color: var(--danger); }
+
+/* ========== CHARACTER DETAIL ========== */
+.char-detail{
+  display: none;
+  margin-top: 18px;
+  padding: 18px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.char-detail.is-on{ display: block; }
+.cd-top{
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.cd-han{
+  font-family: var(--font-han);
+  font-size: 64px;
+  line-height: 1;
+  color: var(--accent-strong);
+}
+.cd-info{ display:flex; flex-direction: column; gap: 4px; flex: 1 1 auto; }
+.cd-py{
+  font-family: var(--font-py);
+  font-size: 22px;
+  font-weight: 700;
+}
+.cd-decomp{
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-family: var(--font-ar);
+  font-size: 11px;
+  direction: rtl;
+}
+.cd-decomp-cell{
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(83,84,254,0.07);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.cd-decomp-cell b{
+  font-family: var(--font-py);
+  font-size: 14px;
+  color: var(--accent-strong);
+  font-weight: 700;
+  direction: ltr;
+}
+.cd-actions{ display: flex; gap: 8px; flex-wrap: wrap; margin-inline-start: auto; }
+
+/* ========== TOAST ========== */
+#toast{
+  position: fixed;
+  bottom: 30px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 12px 22px;
+  background: rgba(31,37,43,0.92);
+  color: #fff;
+  font-family: var(--font-ar);
+  font-size: 13px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 9999;
+  direction: rtl;
+  max-width: 90%;
+  text-align: center;
+}
+#toast.show{ opacity: 1; transform: translateX(-50%) translateY(0); }
+
+footer{
+  text-align: center;
+  font-family: var(--font-ar);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 30px;
+  direction: rtl;
+}
+
+/* ========== MOBILE ========== */
+@media (max-width: 640px){
+  .wrap{ padding: 16px 0 60px; width: calc(100% - 20px); }
+  header{ padding: 10px 14px; margin-bottom: 16px; }
+  .brand-title{ font-size: 17px; }
+  .brand-sub{ font-size: 10px; }
+  .card{ padding: 16px; border-radius: 18px; }
+  .editor{ font-size: 17px; min-height: 78px; padding: 12px; }
+  .controls{ gap: 8px; }
+  .btn{ padding: 9px 14px; font-size: 12px; min-height: 40px; flex: 1 1 auto; }
+  .btn.mic{ height: 52px; min-height: 52px; padding: 0 18px; font-size: 13px; }
+  .speed-group{ width: 100%; margin-inline-start: 0; justify-content: space-between; }
+  #speedSlider{ flex: 1; }
+  .cb-han{ font-size: 26px; }
+  .cb-py{ font-size: 12px; }
+  .char-block{ min-width: 42px; padding: 6px 6px 8px; }
+  .pinyin-stage{ padding: 18px 12px; }
+  /* Feedback ring + subscores */
+  .fb-head{ gap: 14px; }
+  .fb-ring-wrap, .fb-ring{ width: 72px; height: 72px; }
+  .fb-score{ font-size: 22px; }
+  .fb-score-unit{ font-size: 9px; }
+  .fb-label-ar{ font-size: 15px; }
+  .fb-subscores{ padding: 10px 12px; gap: 7px; }
+  .fb-sub-label{ font-size: 10px; min-width: 90px; }
+  .fb-sub-val{ font-size: 11px; min-width: 26px; }
+  .cd-han{ font-size: 50px; }
+  .cd-py{ font-size: 19px; }
+  .header-stats{ display: none; }
+}
+
+@media (max-width: 380px){
+  .cb-han{ font-size: 22px; }
+  .cb-py{ font-size: 11px; }
+  .char-block{ min-width: 38px; padding: 5px 5px 7px; }
+  .fb-ring-wrap, .fb-ring{ width: 64px; height: 64px; }
+  .fb-score{ font-size: 19px; }
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="brand">
+      <div class="brand-title">HanziLens · 拼音朗读</div>
+      <div class="brand-sub">النطق والتكرار · المتابعة الفورية</div>
+    </div>
+    <div class="header-stats">
+      <div class="stat-pill streak" id="statStreakPill" style="display:none;">🔥 <span>متتالية:</span> <b id="statStreak">0</b></div>
+      <div class="stat-pill">🎯 <span>الجلسة:</span> <b id="statAttempts">0</b></div>
+      <div class="stat-pill">⭐ <span>المعدّل:</span> <b id="statAvg">—</b></div>
+    </div>
+  </header>
+
+  <!-- ===== 1) INPUT ===== -->
+  <section class="card">
+    <div class="card-head">
+      <div class="card-title">① أدخل النص <span class="cn">输入文字</span></div>
+      <div class="card-note">حرف · كلمة · جملة</div>
+    </div>
+    <div class="editor-wrap">
+      <textarea class="editor" id="editor" placeholder="اكتب نصًّا صينيًّا — مثال: 你好 · 我爱学习 · 春天来了"></textarea>
+    </div>
+    <div class="examples">
+      <button class="example-btn" data-ex="你好！">🤝 <span class="cn">你好！</span></button>
+      <button class="example-btn" data-ex="我爱学习中文。">📚 <span class="cn">我爱学习中文。</span></button>
+      <button class="example-btn" data-ex="今天天气真好。">☀️ <span class="cn">今天天气真好。</span></button>
+      <button class="example-btn" data-ex="谢谢你的帮助。">🙏 <span class="cn">谢谢你的帮助。</span></button>
+      <button class="example-btn" data-ex="我想喝一杯咖啡。">☕ <span class="cn">我想喝一杯咖啡。</span></button>
+    </div>
+  </section>
+
+  <!-- ===== 2) PINYIN + READING ===== -->
+  <section class="card">
+    <div class="card-head">
+      <div class="card-title">② البينيين والاستماع <span class="cn">拼音 · 朗读</span></div>
+      <div class="card-note">انقر على أي حرف لسماعه</div>
+    </div>
+
+    <div class="pinyin-stage empty" id="pinyinStage"></div>
+
+    <div class="tone-legend">
+      <span><i class="tone-dot" style="background:var(--tone1);"></i>1ـ مستوية</span>
+      <span><i class="tone-dot" style="background:var(--tone2);"></i>2ـ صاعدة</span>
+      <span><i class="tone-dot" style="background:var(--tone3);"></i>3ـ منخفضة-صاعدة</span>
+      <span><i class="tone-dot" style="background:var(--tone4);"></i>4ـ هابطة</span>
+      <span><i class="tone-dot" style="background:var(--tone0);"></i>محايدة</span>
+    </div>
+
+    <div class="controls">
+      <button class="btn primary" id="btnPlay">▶ استمع للنص كاملاً <span class="cn">朗读全部</span></button>
+      <button class="btn" id="btnStop" disabled>⏹ إيقاف <span class="cn">停止</span></button>
+      <button class="btn" id="btnClear">🗑 مسح <span class="cn">清空</span></button>
+
+      <div class="speed-group">
+        <label>🐢</label>
+        <input type="range" id="speedSlider" min="0.5" max="1.3" step="0.05" value="0.85">
+        <label>🐇</label>
+        <span id="speedVal">0.85×</span>
+      </div>
+    </div>
+
+    <div class="reading-status" id="readingStatus">
+      <span class="wave"><span></span><span></span><span></span><span></span></span>
+      <span>يُقرأ الآن: <b id="readingText" style="font-family:var(--font-han);"></b></span>
+    </div>
+  </section>
+
+  <!-- ===== 3) ECHO / FOLLOW-ME with FEEDBACK ===== -->
+  <section class="card echo-card">
+    <div class="card-head">
+      <div class="card-title">③ كرّر واحصل على تقييم فوري <span class="cn">跟读评分</span></div>
+      <div class="card-note">🎤 اضغط على الميكروفون</div>
+    </div>
+
+    <div class="echo-target empty" id="echoTarget">
+      أدخل نصاً أولاً ثم اضغط الميكروفون لتسجيل قراءتك · 输入文字后点击麦克风开始
+    </div>
+
+    <div class="echo-controls">
+      <button class="btn primary" id="btnListenTarget" disabled>🔊 استمع للنموذج <span class="cn">听标准</span></button>
+      <button class="btn mic" id="btnMic" disabled>🎤 ابدأ التسجيل <span class="cn">开始跟读</span></button>
+      <button class="btn" id="btnRetry" style="display:none;">🔁 حاول مرة أخرى <span class="cn">再试一次</span></button>
+    </div>
+
+    <!-- Feedback panel — Pingo AI style with score ring + sub-scores -->
+    <div class="feedback-panel" id="feedbackPanel">
+      <div class="fb-head">
+        <div class="fb-ring-wrap">
+          <svg class="fb-ring" viewBox="0 0 80 80" aria-hidden="true">
+            <circle class="fb-ring-track" cx="40" cy="40" r="34" fill="none" stroke-width="7"/>
+            <circle id="fbRingFill" class="fb-ring-fill" cx="40" cy="40" r="34" fill="none" stroke-width="7" stroke-linecap="round"
+                    stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+          </svg>
+          <div class="fb-ring-center">
+            <span class="fb-score" id="fbScore">0</span>
+            <span class="fb-score-unit">/ 100</span>
+          </div>
+        </div>
+        <div class="fb-label">
+          <span class="fb-label-ar" id="fbLabelAr">ممتاز!</span>
+          <span class="fb-label-cn" id="fbLabelCn">优秀</span>
+        </div>
+      </div>
+
+      <!-- Sub-dimension bars: initial / final / tone -->
+      <div class="fb-subscores" id="fbSubscores">
+        <div class="fb-sub-row">
+          <span class="fb-sub-label">الحرف الأول · 声母</span>
+          <div class="fb-sub-track"><div class="fb-sub-fill" id="fbSubInitial" style="width:0%; background:var(--accent);"></div></div>
+          <span class="fb-sub-val" id="fbSubInitialVal">—</span>
+        </div>
+        <div class="fb-sub-row">
+          <span class="fb-sub-label">باقي المقطع · 韵母</span>
+          <div class="fb-sub-track"><div class="fb-sub-fill" id="fbSubFinal" style="width:0%; background:var(--warning);"></div></div>
+          <span class="fb-sub-val" id="fbSubFinalVal">—</span>
+        </div>
+        <div class="fb-sub-row">
+          <span class="fb-sub-label">النبرة · 声调</span>
+          <div class="fb-sub-track"><div class="fb-sub-fill" id="fbSubTone" style="width:0%; background:var(--danger);"></div></div>
+          <span class="fb-sub-val" id="fbSubToneVal">—</span>
+        </div>
+      </div>
+
+      <div class="fb-detail">
+        <span class="fb-detail-k">المتوقَّع · 目标:</span>
+        <span class="fb-detail-v" id="fbExpected">—</span>
+        <span class="fb-detail-k">سُمع منك · 听到:</span>
+        <span class="fb-detail-v" id="fbHeard">—</span>
+      </div>
+      <div class="fb-tip" id="fbTip">—</div>
+      <div class="fb-actions">
+        <button class="btn primary" id="fbListenAgain">🔊 اسمع النموذج</button>
+        <button class="btn" id="fbTryAgain">🔁 كرّر</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 4) CHARACTER DETAIL (clicking a char) ===== -->
+  <section class="char-detail" id="charDetail">
+    <div class="cd-top">
+      <span class="cd-han" id="cdHan">字</span>
+      <div class="cd-info">
+        <span class="cd-py" id="cdPy">—</span>
+        <div class="cd-decomp">
+          <div class="cd-decomp-cell">الحرف الأول · 声母<b id="cdInitial">—</b></div>
+          <div class="cd-decomp-cell">باقي المقطع · 韵母<b id="cdFinal">—</b></div>
+          <div class="cd-decomp-cell">النبرة · 声调<b id="cdTone">—</b></div>
+        </div>
+      </div>
+      <div class="cd-actions">
+        <button class="btn primary" id="cdSpeak">🔊 استمع <span class="cn">朗读</span></button>
+        <button class="btn" id="cdFollow">🎤 كرّر <span class="cn">跟读</span></button>
+        <button class="btn" id="cdClose">✕ إغلاق</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>تصميم Lin Rui · HanziLens · 拼音朗读跟读练习</footer>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ============================================================
+   STATE
+============================================================ */
+let currentText = '';
+let currentRate = 0.85;
+let chineseVoice = null;
+let isSpeaking = false;
+let isRecording = false;
+let recognition = null;
+let stats = { attempts: 0, totalScore: 0, streak: 0 };
+
+/* Try restore stats from localStorage */
+try{
+  const s = JSON.parse(localStorage.getItem('pinyin_stats') || '{}');
+  if(s.attempts){ stats = s; updateStats(); }
+}catch(e){}
+
+/* ============================================================
+   PINYIN HELPERS  (using pinyin-pro)
+============================================================ */
+const PP = window.pinyinPro;
+
+function isHan(ch){ return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch); }
+
+/* Get pinyin with tone marks for a single character */
+function pyMark(ch){
+  try{ return PP.pinyin(ch, { toneType: 'symbol', type: 'string' }); }
+  catch(e){ return ''; }
+}
+/* Get pinyin in tone-number form for a single character (for tone detection) */
+function pyNum(ch){
+  try{ return PP.pinyin(ch, { toneType: 'num', type: 'string' }); }
+  catch(e){ return ''; }
+}
+/* Plain pinyin without tones — used for ASR comparison */
+function pyPlain(text){
+  try{ return PP.pinyin(text, { toneType: 'none', type: 'string', nonZh: 'removed' }).trim(); }
+  catch(e){ return ''; }
+}
+/* Extract tone number 0-4 from a numeric pinyin like "ni3" */
+function toneOf(pn){
+  const m = String(pn).match(/[0-4](?!.*[0-4])/);
+  if(!m) return 0;
+  return parseInt(m[0], 10) || 0;
+}
+/* Decompose pinyin into initial / final */
+const INITIALS = ['zh','ch','sh','b','p','m','f','d','t','n','l','g','k','h','j','q','x','r','z','c','s','y','w'];
+function decompose(plainPy){
+  if(!plainPy) return { initial: '—', final: '—' };
+  const lo = plainPy.toLowerCase();
+  for(const ini of INITIALS){
+    if(lo.startsWith(ini)){
+      return { initial: ini, final: lo.slice(ini.length) || '—' };
+    }
+  }
+  return { initial: '—', final: lo };
+}
+
+/* ============================================================
+   SPEECH SYNTHESIS  (TTS for Mandarin)
+============================================================ */
+function pickVoice(){
+  if(!('speechSynthesis' in window)) return null;
+  const voices = speechSynthesis.getVoices();
+  if(!voices.length) return null;
+  /* Prefer zh-CN/cmn voices, exclude Cantonese / Taiwanese */
+  const ok = voices.filter(v => {
+    const lang = (v.lang||'').toLowerCase();
+    const name = (v.name||'').toLowerCase();
+    if(/yue|cantonese|hk|tw|taiwan/.test(lang) || /cantonese|yue/.test(name)) return false;
+    return /^(zh-cn|zh|cmn)/i.test(v.lang||'') || /chinese|mandarin|中文|普通话/i.test(v.name||'');
+  });
+  if(ok.length){
+    /* Prefer enhanced/premium/natural voices */
+    const premium = ok.find(v => /premium|enhanced|neural|natural|wavenet|tingting|sin-ji|yuna|ya-?ling/i.test(v.name||''));
+    return premium || ok[0];
+  }
+  return null;
+}
+function initVoices(){ chineseVoice = pickVoice(); }
+if('speechSynthesis' in window){
+  initVoices();
+  speechSynthesis.onvoiceschanged = initVoices;
+  setTimeout(initVoices, 250);
+  setTimeout(initVoices, 1000);
+}
+
+function speak(text, opts={}){
+  return new Promise((resolve) => {
+    if(!('speechSynthesis' in window)){
+      toast('متصفحك لا يدعم تركيب الكلام · 浏览器不支持语音合成');
+      resolve(); return;
+    }
+    try{
+      if(!chineseVoice) chineseVoice = pickVoice();
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      if(chineseVoice) u.voice = chineseVoice;
+      let r = opts.rate ?? currentRate;
+      if(opts.isSingle) r = Math.min(r, 0.80);
+      u.rate = Math.max(0.5, Math.min(1.3, r));
+      u.pitch = 1.0;
+      u.volume = 1.0;
+      u.onend = () => { isSpeaking = false; resolve(); };
+      u.onerror = () => { isSpeaking = false; resolve(); };
+      isSpeaking = true;
+      /* small delay helps Chrome */
+      setTimeout(() => { try{ speechSynthesis.speak(u); }catch(e){ isSpeaking=false; resolve(); } }, 30);
+    }catch(e){ isSpeaking=false; resolve(); }
+  });
+}
+
+/* ============================================================
+   RENDER PINYIN
+============================================================ */
+function renderPinyin(text){
+  const stage = document.getElementById('pinyinStage');
+  stage.innerHTML = '';
+  if(!text.trim()){
+    stage.classList.add('empty');
+    return;
+  }
+  stage.classList.remove('empty');
+
+  const row = document.createElement('div');
+  row.className = 'pinyin-row';
+
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(ch === '\n' || ch === '\r'){
+      row.appendChild(document.createElement('br'));
+      continue;
+    }
+    if(/\s/.test(ch)) continue;
+
+    const block = document.createElement('div');
+    block.className = 'char-block';
+    block.dataset.idx = i;
+    block.dataset.ch = ch;
+
+    if(isHan(ch)){
+      const pm = pyMark(ch) || ch;
+      const pn = pyNum(ch);
+      const t = toneOf(pn);
+      block.classList.add('tone' + t);
+      block.innerHTML = `<span class="cb-py">${escapeHtml(pm)}</span><span class="cb-han">${escapeHtml(ch)}</span>`;
+      block.addEventListener('click', () => openCharDetail(ch, block));
+    } else {
+      block.classList.add('is-punct');
+      block.innerHTML = `<span class="cb-py">·</span><span class="cb-han">${escapeHtml(ch)}</span>`;
+    }
+    row.appendChild(block);
+  }
+  stage.appendChild(row);
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ============================================================
+   CHARACTER DETAIL PANEL
+============================================================ */
+function openCharDetail(ch, blockEl){
+  if(!isHan(ch)) return;
+  /* highlight active */
+  document.querySelectorAll('.char-block.is-active').forEach(el => el.classList.remove('is-active'));
+  if(blockEl) blockEl.classList.add('is-active');
+
+  const panel = document.getElementById('charDetail');
+  const pm = pyMark(ch);
+  const pn = pyNum(ch);
+  const plain = pn.replace(/[0-9]/g,'');
+  const { initial, final } = decompose(plain);
+  const t = toneOf(pn);
+
+  document.getElementById('cdHan').textContent = ch;
+  document.getElementById('cdPy').textContent = pm;
+  document.getElementById('cdInitial').textContent = initial;
+  document.getElementById('cdFinal').textContent = final;
+  document.getElementById('cdTone').textContent = t === 0 ? '·' : (t + ' ـ');
+  /* tone color on han */
+  const han = document.getElementById('cdHan');
+  han.style.color = `var(--tone${t})`;
+  document.getElementById('cdPy').style.color = `var(--tone${t})`;
+
+  panel.classList.add('is-on');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  /* Auto-speak the character (single char clear teacher voice) */
+  speak(ch, { isSingle: true });
+}
+
+document.getElementById('cdSpeak').addEventListener('click', () => {
+  const ch = document.getElementById('cdHan').textContent;
+  if(ch) speak(ch, { isSingle: true });
+});
+document.getElementById('cdClose').addEventListener('click', () => {
+  document.getElementById('charDetail').classList.remove('is-on');
+  document.querySelectorAll('.char-block.is-active').forEach(el => el.classList.remove('is-active'));
+});
+document.getElementById('cdFollow').addEventListener('click', () => {
+  const ch = document.getElementById('cdHan').textContent;
+  if(!ch) return;
+  /* Use the single-char as the target and run echo flow */
+  setTargetForEcho(ch);
+  startRecording();
+});
+
+/* ============================================================
+   PLAY ALL / STOP
+============================================================ */
+const btnPlay = document.getElementById('btnPlay');
+const btnStop = document.getElementById('btnStop');
+const readingStatus = document.getElementById('readingStatus');
+const readingText = document.getElementById('readingText');
+
+async function playAll(){
+  const text = currentText.trim();
+  if(!text){ toast('الرجاء إدخال نص أولاً · 请先输入文字'); return; }
+  btnPlay.disabled = true;
+  btnStop.disabled = false;
+  readingStatus.classList.add('is-on');
+  readingText.textContent = text.length > 24 ? text.slice(0,24)+'…' : text;
+  await speak(text);
+  readingStatus.classList.remove('is-on');
+  btnPlay.disabled = false;
+  btnStop.disabled = true;
+}
+btnPlay.addEventListener('click', playAll);
+btnStop.addEventListener('click', () => {
+  try{ speechSynthesis.cancel(); }catch(e){}
+  isSpeaking = false;
+  readingStatus.classList.remove('is-on');
+  btnPlay.disabled = false;
+  btnStop.disabled = true;
+});
+
+/* ============================================================
+   EDITOR + EXAMPLES + SPEED
+============================================================ */
+const editor = document.getElementById('editor');
+const echoTarget = document.getElementById('echoTarget');
+const btnMic = document.getElementById('btnMic');
+const btnListenTarget = document.getElementById('btnListenTarget');
+
+function onTextChange(){
+  currentText = editor.value || '';
+  renderPinyin(currentText);
+  /* Update echo target */
+  setTargetForEcho(currentText);
+  /* Hide feedback when text changes */
+  document.getElementById('feedbackPanel').classList.remove('is-on');
+  document.getElementById('btnRetry').style.display = 'none';
+  /* Persist */
+  try{ localStorage.setItem('pinyin_draft', currentText); }catch(e){}
+}
+editor.addEventListener('input', onTextChange);
+
+document.querySelectorAll('.example-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    editor.value = b.dataset.ex;
+    onTextChange();
+    /* Auto play after a short delay so user hears it */
+    setTimeout(() => playAll(), 200);
+  });
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  editor.value = '';
+  onTextChange();
+  document.getElementById('charDetail').classList.remove('is-on');
+});
+
+const speedSlider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+speedSlider.addEventListener('input', () => {
+  currentRate = parseFloat(speedSlider.value);
+  speedVal.textContent = currentRate.toFixed(2) + '×';
+  try{ localStorage.setItem('pinyin_rate', String(currentRate)); }catch(e){}
+});
+/* restore rate */
+try{
+  const r = parseFloat(localStorage.getItem('pinyin_rate'));
+  if(!isNaN(r)){ currentRate = r; speedSlider.value = r; speedVal.textContent = r.toFixed(2)+'×'; }
+}catch(e){}
+/* restore draft */
+try{
+  const d = localStorage.getItem('pinyin_draft');
+  if(d){ editor.value = d; onTextChange(); }
+}catch(e){}
+
+/* ============================================================
+   ECHO TARGET (what to repeat)
+============================================================ */
+function setTargetForEcho(text){
+  const t = String(text || '').trim();
+  if(!t){
+    echoTarget.classList.add('empty');
+    echoTarget.innerHTML = 'أدخل نصاً أولاً ثم اضغط الميكروفون لتسجيل قراءتك · 输入文字后点击麦克风开始';
+    btnMic.disabled = true;
+    btnListenTarget.disabled = true;
+    return;
+  }
+  echoTarget.classList.remove('empty');
+  /* Render with han + pinyin */
+  let html = '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:flex-end;">';
+  for(const ch of t){
+    if(ch === '\n'){ html += '<br>'; continue; }
+    if(/\s/.test(ch)) continue;
+    if(isHan(ch)){
+      const pn = pyNum(ch);
+      const tone = toneOf(pn);
+      html += `<span class="ec-char tone${tone}" data-ch="${escapeHtml(ch)}" data-py="${escapeHtml(pn.replace(/\d/g,''))}">
+                 <span class="ec-py">${escapeHtml(pyMark(ch))}</span>
+                 <span class="ec-han">${escapeHtml(ch)}</span>
+               </span>`;
+    } else {
+      html += `<span class="ec-char is-punct"><span class="ec-py">&nbsp;</span><span class="ec-han">${escapeHtml(ch)}</span></span>`;
+    }
+  }
+  html += '</div>';
+  echoTarget.innerHTML = html;
+  btnMic.disabled = false;
+  btnListenTarget.disabled = false;
+}
+
+btnListenTarget.addEventListener('click', async () => {
+  if(!currentText.trim()) return;
+  btnListenTarget.disabled = true;
+  await speak(currentText);
+  btnListenTarget.disabled = false;
+});
+
+/* ============================================================
+   SPEECH RECOGNITION  (the heart of Pingo-style feedback)
+============================================================ */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const supportsRec = !!SpeechRec;
+
+function buildRecognizer(){
+  if(!supportsRec) return null;
+  const r = new SpeechRec();
+  r.lang = 'zh-CN';
+  r.interimResults = false;
+  r.continuous = false;
+  r.maxAlternatives = 3;
+  return r;
+}
+
+btnMic.addEventListener('click', () => {
+  if(isRecording){ stopRecording(); }
+  else { startRecording(); }
+});
+document.getElementById('btnRetry').addEventListener('click', startRecording);
+document.getElementById('fbTryAgain').addEventListener('click', startRecording);
+document.getElementById('fbListenAgain').addEventListener('click', () => speak(currentText));
+
+function startRecording(){
+  if(!supportsRec){
+    toast('متصفحك لا يدعم التعرف على الكلام — استخدم Chrome أو Safari · 浏览器不支持语音识别，请用 Chrome/Safari');
+    return;
+  }
+  if(!currentText.trim()){ toast('الرجاء إدخال نص أولاً · 请先输入文字'); return; }
+  /* stop any speaking first */
+  try{ speechSynthesis.cancel(); }catch(e){}
+  isSpeaking = false;
+  /* hide previous feedback */
+  document.getElementById('feedbackPanel').classList.remove('is-on');
+  /* clear previous per-char states */
+  echoTarget.querySelectorAll('.ec-char').forEach(el => el.classList.remove('ok','bad'));
+
+  recognition = buildRecognizer();
+  if(!recognition) return;
+
+  recognition.onstart = () => {
+    isRecording = true;
+    btnMic.classList.add('is-recording');
+    btnMic.innerHTML = '⏹ إيقاف التسجيل <span class="cn">停止</span>';
+  };
+  recognition.onerror = (ev) => {
+    isRecording = false;
+    btnMic.classList.remove('is-recording');
+    btnMic.innerHTML = '🎤 ابدأ التسجيل <span class="cn">开始跟读</span>';
+    if(ev.error === 'not-allowed'){
+      toast('الرجاء السماح باستخدام الميكروفون · 请允许使用麦克风');
+    } else if(ev.error === 'no-speech'){
+      toast('لم يُسمَع شيء — حاول مرة أخرى · 没有听到声音，再试一次');
+    } else if(ev.error === 'audio-capture'){
+      toast('لم نتمكن من الوصول إلى الميكروفون · 麦克风不可用');
+    } else {
+      toast('خطأ في التعرف — ' + ev.error + ' · 识别错误');
+    }
+  };
+  recognition.onend = () => {
+    isRecording = false;
+    btnMic.classList.remove('is-recording');
+    btnMic.innerHTML = '🎤 ابدأ التسجيل <span class="cn">开始跟读</span>';
+  };
+  recognition.onresult = (ev) => {
+    /* gather all alternatives, pick best match */
+    const target = currentText.trim();
+    let best = null;
+    const alts = [];
+    if(ev.results && ev.results[0]){
+      for(let i = 0; i < ev.results[0].length; i++){
+        alts.push(ev.results[0][i].transcript);
+      }
+    }
+    if(!alts.length){ toast('لم يُسمَع شيء · 没有听到声音'); return; }
+    for(const heard of alts){
+      const sc = scoreReading(target, heard);
+      if(!best || sc.total > best.total){ best = { ...sc, heard }; }
+    }
+    showFeedback(best);
+  };
+
+  try{ recognition.start(); }
+  catch(e){
+    /* Some browsers throw if already started */
+    setTimeout(() => { try{ recognition.start(); }catch(_){ } }, 200);
+  }
+}
+
+function stopRecording(){
+  if(recognition && isRecording){
+    try{ recognition.stop(); }catch(e){}
+  }
+}
+
+/* ============================================================
+   SCORING (Pingo-style)
+   - Compare expected vs heard at the *pinyin* level (no tones)
+     because zh-CN ASR isn't reliable on tones for short inputs.
+   - Use char-level alignment via Levenshtein on han-char sequence.
+   - Score = 100 × (1 − edit_distance / max_len), clamped.
+   - Also produce per-char ok/bad flags using a greedy align.
+============================================================ */
+function scoreReading(expected, heard){
+  /* Normalize: keep only han chars from both, lowercased pinyin */
+  const expHan = Array.from(expected).filter(isHan);
+  const heardHan = Array.from(heard).filter(isHan);
+
+  /* If recognition returned pinyin-romanized output (rare), try pinyin-vs-pinyin */
+  const expPy = expHan.map(c => pyPlain(c).toLowerCase());
+  const heardPy = heardHan.map(c => pyPlain(c).toLowerCase());
+
+  /* Levenshtein on pinyin syllables — counts insertion/del/substitution */
+  const dist = levenshtein(expPy, heardPy);
+  const maxLen = Math.max(expPy.length, heardPy.length) || 1;
+  let pct = Math.max(0, 100 - Math.round(100 * dist / maxLen));
+
+  /* Char-level matching for visual feedback (greedy 2-pointer with windowed look-ahead).
+     Also record aligned heard syllable for each expected, for per-dimension scoring. */
+  const flags = expPy.map(() => false);
+  const heardAlign = expPy.map(() => null);
+  let j = 0;
+  for(let i = 0; i < expPy.length; i++){
+    const want = expPy[i];
+    if(!want) continue;
+    /* try exact match at j, or within next 2 positions */
+    let matched = false;
+    for(let k = j; k < Math.min(heardPy.length, j + 3); k++){
+      if(heardPy[k] === want){
+        flags[i] = true;
+        heardAlign[i] = heardPy[k];
+        j = k + 1;
+        matched = true;
+        break;
+      }
+    }
+    if(!matched){
+      /* try fuzzy: same initial + same final without tone */
+      for(let k = j; k < Math.min(heardPy.length, j + 2); k++){
+        if(heardPy[k] && want && (heardPy[k][0] === want[0]) && (heardPy[k].slice(-1) === want.slice(-1))){
+          flags[i] = true;
+          heardAlign[i] = heardPy[k];
+          j = k + 1;
+          matched = true;
+          break;
+        }
+      }
+    }
+    if(!matched && j < heardPy.length){
+      /* positional fallback for dim scoring */
+      heardAlign[i] = heardPy[j];
+      j += 1;
+    }
+  }
+  const okCount = flags.filter(Boolean).length;
+  /* Combine: 70% pinyin-level Levenshtein, 30% per-char hit rate */
+  const hitRate = expPy.length ? (okCount / expPy.length) * 100 : 0;
+  const total = Math.round(pct * 0.7 + hitRate * 0.3);
+
+  /* === Per-dimension subscores (initial / final / tone) === */
+  let iniMatch = 0, finMatch = 0, toneMatch = 0, dimDenom = 0;
+  for(let i = 0; i < expHan.length; i++){
+    const expCh = expHan[i];
+    const expPnum = pyNum(expCh) || '';
+    const expPlain = expPnum.replace(/[0-9]/g,'').toLowerCase();
+    const expTone = toneOf(expPnum);
+    const { initial: expI, final: expF } = decompose(expPlain);
+
+    const heardSyl = heardAlign[i];
+    if(!heardSyl){ dimDenom += 1; continue; }
+    /* heardAlign stores plain pinyin (no tone), so we approximate tone by re-fetching
+       from the heard han at same position (when possible) */
+    const heardCh = heardHan[Math.min(i, heardHan.length-1)];
+    const heardPnum = heardCh ? pyNum(heardCh) : '';
+    const heardTone = toneOf(heardPnum);
+    const { initial: heardI, final: heardF } = decompose(heardSyl);
+
+    dimDenom += 1;
+    if(expI === heardI) iniMatch += 1;
+    if(expF === heardF) finMatch += 1;
+    if(expTone === heardTone) toneMatch += 1;
+  }
+  const subInitial = dimDenom ? Math.round(100 * iniMatch / dimDenom) : 0;
+  const subFinal   = dimDenom ? Math.round(100 * finMatch / dimDenom) : 0;
+  const subTone    = dimDenom ? Math.round(100 * toneMatch / dimDenom) : 0;
+
+  return {
+    total: Math.max(0, Math.min(100, total)),
+    expHan, heardHan,
+    expPy, heardPy,
+    flags,
+    subInitial, subFinal, subTone
+  };
+}
+
+function levenshtein(a, b){
+  const m = a.length, n = b.length;
+  if(!m) return n;
+  if(!n) return m;
+  const dp = Array.from({length: m+1}, () => new Array(n+1).fill(0));
+  for(let i = 0; i <= m; i++) dp[i][0] = i;
+  for(let j = 0; j <= n; j++) dp[0][j] = j;
+  for(let i = 1; i <= m; i++){
+    for(let j = 1; j <= n; j++){
+      const cost = a[i-1] === b[j-1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i-1][j] + 1,
+        dp[i][j-1] + 1,
+        dp[i-1][j-1] + cost
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/* ============================================================
+   SHOW FEEDBACK
+============================================================ */
+function showFeedback(result){
+  if(!result){ return; }
+  const panel = document.getElementById('feedbackPanel');
+  const score = result.total;
+
+  /* color tier — Pingo AI style: encouraging tone, growth mindset */
+  panel.classList.remove('score-excellent','score-good','score-ok','score-low');
+  let tierClass, labelAr, labelCn, tip;
+  if(score >= 90){
+    tierClass = 'score-excellent';
+    labelAr = 'رائع جداً! 🔥';
+    labelCn = '优秀';
+    tip = '✨ نطقك يشبه الناطقين الأصليين! استمر بهذا المستوى الرائع.';
+  } else if(score >= 75){
+    tierClass = 'score-good';
+    labelAr = 'أداء رائع! 💪';
+    labelCn = '良好';
+    tip = '🎯 تحسّن ملحوظ! راجع الحروف الملوّنة بالأحمر واستمع للنموذج مرة أخرى.';
+  } else if(score >= 55){
+    tierClass = 'score-ok';
+    labelAr = 'في الطريق الصحيح! 🎯';
+    labelCn = '一般';
+    tip = '🐢 استمع للنموذج بسرعة بطيئة، ثم كرّر حرفاً حرفاً. أنت تتقدّم!';
+  } else {
+    tierClass = 'score-low';
+    labelAr = 'كل بداية صعبة، حاول مجدداً 🌱';
+    labelCn = '继续加油';
+    tip = '💡 تأكّد من قرب الميكروفون وتحدّث بوضوح وبصوت مرتفع. ستنجح في المرة القادمة!';
+  }
+  panel.classList.add(tierClass);
+
+  /* Animate score number 0 → score with easing */
+  const scoreEl = document.getElementById('fbScore');
+  animateNumber(scoreEl, 0, score, 800);
+
+  document.getElementById('fbLabelAr').textContent = labelAr;
+  document.getElementById('fbLabelCn').textContent = labelCn;
+  document.getElementById('fbTip').textContent = tip;
+
+  /* Animate ring (SVG circumference = 2π × 34 = 213.6) */
+  const ringFill = document.getElementById('fbRingFill');
+  if(ringFill){
+    const C = 213.6;
+    ringFill.style.strokeDashoffset = String(C);
+    requestAnimationFrame(() => {
+      ringFill.style.strokeDashoffset = String(C * (1 - score / 100));
+    });
+  }
+
+  /* Animate sub-scores (initial / final / tone) */
+  const subInitial = result.subInitial ?? 0;
+  const subFinal   = result.subFinal   ?? 0;
+  const subTone    = result.subTone    ?? 0;
+  const setSub = (fillId, valId, val) => {
+    const f = document.getElementById(fillId);
+    const v = document.getElementById(valId);
+    if(!f || !v) return;
+    f.style.width = '0%';
+    v.textContent = '0';
+    requestAnimationFrame(() => { f.style.width = val + '%'; });
+    animateNumber(v, 0, val, 800);
+  };
+  setSub('fbSubInitial', 'fbSubInitialVal', subInitial);
+  setSub('fbSubFinal',   'fbSubFinalVal',   subFinal);
+  setSub('fbSubTone',    'fbSubToneVal',    subTone);
+
+  /* Build "expected" highlighted view (mark ok/bad per char) */
+  let expHtml = '';
+  result.expHan.forEach((ch, i) => {
+    const cls = result.flags[i] ? 'ok' : 'bad';
+    expHtml += `<span class="${cls}">${escapeHtml(ch)}</span>`;
+  });
+  document.getElementById('fbExpected').innerHTML = expHtml || '<span class="bad">—</span>';
+  document.getElementById('fbHeard').textContent = result.heard || '—';
+
+  /* Mark per-char in echo target */
+  const cells = echoTarget.querySelectorAll('.ec-char:not(.is-punct)');
+  let hanIdx = 0;
+  cells.forEach(cell => {
+    const ch = cell.dataset.ch;
+    if(!ch || !isHan(ch)) return;
+    if(hanIdx < result.flags.length){
+      cell.classList.add(result.flags[hanIdx] ? 'ok' : 'bad');
+      hanIdx++;
+    }
+  });
+
+  panel.classList.add('is-on');
+  document.getElementById('btnRetry').style.display = '';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  /* Update stats — including streak */
+  stats.attempts += 1;
+  stats.totalScore += score;
+  if(score >= 75){
+    stats.streak = (stats.streak || 0) + 1;
+    /* Celebrate milestones */
+    if(stats.streak === 3) toast('🔥 3 متتاليات! استمر!');
+    else if(stats.streak === 5) toast('🔥🔥 5 متتاليات! أداء ممتاز!');
+    else if(stats.streak === 10) toast('🔥🔥🔥 10 متتاليات! أنت في القمة!');
+    else if(stats.streak > 0 && stats.streak % 10 === 0) toast('🔥 ' + stats.streak + ' متتاليات!');
+  } else {
+    stats.streak = 0;
+  }
+  updateStats();
+  try{ localStorage.setItem('pinyin_stats', JSON.stringify(stats)); }catch(e){}
+}
+
+/* Smoothly tween a number on an element from `from` to `to` over `ms` */
+function animateNumber(el, from, to, ms){
+  if(!el) return;
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / ms);
+    /* ease-out cubic */
+    const e = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(from + (to - from) * e);
+    if(t < 1) requestAnimationFrame(step);
+    else el.textContent = to;
+  };
+  requestAnimationFrame(step);
+}
+
+function updateStats(){
+  document.getElementById('statAttempts').textContent = stats.attempts;
+  document.getElementById('statAvg').textContent =
+    stats.attempts ? Math.round(stats.totalScore / stats.attempts) : '—';
+  /* Streak pill: show only when streak >= 2, hide otherwise */
+  const streakPill = document.getElementById('statStreakPill');
+  const streakNum  = document.getElementById('statStreak');
+  if(streakPill && streakNum){
+    if(stats.streak && stats.streak >= 2){
+      streakPill.style.display = '';
+      streakNum.textContent = stats.streak;
+    } else {
+      streakPill.style.display = 'none';
+    }
+  }
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+let _toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2800);
+}
+
+/* ============================================================
+   KEYBOARD SHORTCUTS
+============================================================ */
+document.addEventListener('keydown', (e) => {
+  if(e.target === editor || e.target.tagName === 'INPUT') return;
+  if(e.code === 'Space'){
+    e.preventDefault();
+    if(isSpeaking){ btnStop.click(); }
+    else { btnPlay.click(); }
+  }
+  if(e.key.toLowerCase() === 'r'){
+    e.preventDefault();
+    if(!btnMic.disabled) btnMic.click();
+  }
+});
+
+/* ============================================================
+   INIT
+============================================================ */
+/* Disable mic button if no SpeechRecognition support */
+if(!supportsRec){
+  btnMic.disabled = true;
+  btnMic.title = 'متصفحك لا يدعم التعرف على الكلام · 浏览器不支持语音识别';
+  btnMic.innerHTML = '🎤 غير مدعوم <span class="cn">不支持</span>';
+}
+
+/* Initialize state */
+onTextChange();
+</script>
+</body>
+</html>
