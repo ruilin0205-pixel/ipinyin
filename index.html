@@ -902,159 +902,174 @@ button:focus-visible {
 
 
   // ═══════════════════════════════════════════════════════════════
-  //  语音引擎 — 按 ChatGPT 方案完整实现
-  //  修复点：
-  //  1. voices 未加载完就播放 → 等 onvoiceschanged 后再 speak
-  //  2. 第一次点击无声 → 页面加载后用静默 utterance 解锁音频上下文
-  //  3. 中文 voice 优先选择 → 按名称/语言精确筛选并缓存
-  //  4. 长句自动分段 → 按标点切分，逐段播放
-  //  5. Chrome 自动暂停 → setInterval 每 500ms 检测并 resume
-  //  6. stopSpeech() → cancel + clearInterval 双重停止
+  //  语音引擎 — 统一入口 ttsSpeak()
+  //  策略：Azure Neural TTS (如填了 key) → 浏览器 speechSynthesis fallback
+  //
+  //  常见无声问题已修复：
+  //    1. Chrome / iOS 需要"用户手势解锁"后才能播放 → 首次任意点击解锁
+  //    2. iOS Safari 在 voices 为空时不会触发 onvoiceschanged
+  //       → 不再阻塞等待 voice 列表，直接 speak（系统会按 lang 挑声）
+  //    3. Chrome 长句被自动暂停 → resumeTimer 持续 resume
+  //    4. 原 speakChinese() 没有走 Azure 分支，等于配置完全失效 → 已修
+  //    5. 加上详细 console 日志，便于排查"无声"到底卡在哪一步
   // ═══════════════════════════════════════════════════════════════
 
-  let _voices      = [];
+  const _hasAzure = !!(AZURE_SPEECH_KEY && AZURE_REGION);
+
   let _zhVoice     = null;
-  let _voicesReady = false;
   let _resumeTimer = null;
+  let _ttsUnlocked = false;
 
-  // ── 1. 加载并缓存中文 voice ──────────────────────────────────
-  function _loadVoices() {
+  function _pickZhVoice() {
+    if (!window.speechSynthesis) return null;
     const all = window.speechSynthesis.getVoices();
-    if (!all.length) return;
-    _voices = all;
-    _voicesReady = true;
-
-    // 优先顺序：Xiaoxiao(微软) > Tingting/Meijia(苹果) > 任意本地 zh-CN > 任意 zh
-    _zhVoice =
+    if (!all.length) return null;
+    return (
       all.find(v => /xiaoxiao/i.test(v.name))                          ||
-      all.find(v => /ting.?ting|meijia|sinji/i.test(v.name))           ||
+      all.find(v => /ting.?ting|meijia|sinji|yating/i.test(v.name))    ||
       all.find(v => v.localService && v.lang === 'zh-CN')              ||
       all.find(v => v.lang === 'zh-CN')                                ||
-      all.find(v => v.lang.startsWith('zh'))                           ||
-      null;
-
-    console.log('[TTS] voice ready:', _zhVoice ? _zhVoice.name : 'none');
+      all.find(v => v.lang && v.lang.toLowerCase().startsWith('zh'))   ||
+      null
+    );
   }
 
-  window.speechSynthesis.onvoiceschanged = _loadVoices;
-  _loadVoices();
-
-  // ── 2. 页面加载后立即用静默 utterance 解锁音频上下文 ─────────
-  // Chrome 要求必须有过一次用户交互后才能播放，
-  // 但页面内任意点击都算，这里监听一次 click 后触发静默解锁。
-  let _unlocked = false;
-  function _unlock() {
-    if (_unlocked) return;
-    _unlocked = true;
-    const u = new SpeechSynthesisUtterance('');
-    u.volume = 0;
-    u.lang   = 'zh-CN';
-    window.speechSynthesis.speak(u);
-    console.log('[TTS] audio context unlocked');
+  function _refreshVoice() {
+    _zhVoice = _pickZhVoice();
+    if (_zhVoice) {
+      console.log('[TTS] 已选中文语音:', _zhVoice.name, _zhVoice.lang);
+    } else if (window.speechSynthesis) {
+      const n = window.speechSynthesis.getVoices().length;
+      console.warn('[TTS] 未找到中文语音 (voices=' + n + ')，将用 lang=zh-CN 让系统自选');
+    }
   }
-  document.addEventListener('click', _unlock, { once: true });
 
-  // ── 5. Chrome 自动暂停修复 ──────────────────────────────────
+  if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = _refreshVoice;
+    _refreshVoice();
+  } else {
+    console.warn('[TTS] 浏览器不支持 speechSynthesis');
+  }
+
   function _startResumeTimer() {
     _stopResumeTimer();
     _resumeTimer = setInterval(() => {
-      if (window.speechSynthesis.paused && window.speechSynthesis.speaking) {
-        window.speechSynthesis.resume();
-      }
-    }, 500);
+      const s = window.speechSynthesis;
+      if (s && s.paused && s.speaking) s.resume();
+    }, 400);
   }
   function _stopResumeTimer() {
     if (_resumeTimer) { clearInterval(_resumeTimer); _resumeTimer = null; }
   }
 
-  // ── 6. stopSpeech ────────────────────────────────────────────
   function ttsStop() {
     _stopResumeTimer();
-    window.speechSynthesis.cancel();
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch(e){}
+    }
+    if (_currentSource) { try { _currentSource.stop(); } catch(e){} _currentSource = null; }
   }
 
-  // ── 4. 长句分段：按中文标点切分 ─────────────────────────────
+  function _makeUtterance(text, rate) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang   = 'zh-CN';
+    u.rate   = rate || 0.9;
+    u.pitch  = 1.0;
+    u.volume = 1.0;
+    if (_zhVoice) u.voice = _zhVoice;
+    return u;
+  }
+
+  // 按句末标点分段，每段 ≤ 40 字
   function _splitText(text) {
-    // 按句末标点切分，每段不超过 30 字
-    const parts = text.split(/(?<=[。！？，、；：,.!?;:])/);
-    const result = [];
+    const segs = [];
+    const parts = text.split(/([。！？!?，,、；;：:]+)/);
+    let buf = '';
     for (const p of parts) {
-      const t = p.trim();
-      if (!t) continue;
-      if (t.length <= 30) {
-        result.push(t);
-      } else {
-        // 超过 30 字强制切分
-        for (let i = 0; i < t.length; i += 30) {
-          result.push(t.slice(i, i + 30));
-        }
+      buf += p;
+      if (/[。！？!?，,、；;：:]$/.test(buf)) {
+        const t = buf.trim();
+        if (t) segs.push(t);
+        buf = '';
       }
     }
-    return result.length ? result : [text];
-  }
-
-  // ── 核心：逐段播放 ──────────────────────────────────────────
-  function _speakSegments(segments, rate, onDone) {
-    if (!segments.length) { if (onDone) onDone(); return; }
-    const seg = segments[0];
-    const rest = segments.slice(1);
-
-    const u    = new SpeechSynthesisUtterance(seg);
-    u.lang     = 'zh-CN';
-    u.rate     = typeof rate === 'number' ? rate : 0.9;
-    u.pitch    = 1.0;
-    u.volume   = 1.0;
-    if (_zhVoice) u.voice = _zhVoice;
-
-    u.onend   = () => _speakSegments(rest, rate, onDone);
-    u.onerror = (e) => {
-      console.warn('[TTS] segment error:', e.error, '|', seg);
-      _speakSegments(rest, rate, onDone); // 出错跳过这段继续
-    };
-
-    window.speechSynthesis.speak(u);
-  }
-
-  // ── 主入口 ttsSpeak ──────────────────────────────────────────
-  function ttsSpeak(text, rate, onDone) {
-    if (!text || !window.speechSynthesis) { if (onDone) onDone(); return; }
-
-    // voices 还没加载好时，等待最多 2 秒
-    if (!_voicesReady) {
-      let waited = 0;
-      const wait = setInterval(() => {
-        waited += 100;
-        _loadVoices();
-        if (_voicesReady || waited >= 2000) {
-          clearInterval(wait);
-          _doSpeak(text, rate, onDone);
-        }
-      }, 100);
-      return;
+    if (buf.trim()) segs.push(buf.trim());
+    const out = [];
+    for (const seg of segs) {
+      if (seg.length <= 40) out.push(seg);
+      else for (let i = 0; i < seg.length; i += 40) out.push(seg.slice(i, i + 40));
     }
-
-    _doSpeak(text, rate, onDone);
+    return out.length ? out : [text];
   }
 
-  function _doSpeak(text, rate, onDone) {
-    ttsStop(); // 停掉上一句
-
-    // cancel 后需要一个事件循环让队列清空
-    setTimeout(() => {
-      _startResumeTimer();
-      const segments = _splitText(text);
-      _speakSegments(segments, rate, () => {
-        _stopResumeTimer();
-        if (onDone) onDone();
-      });
-    }, 50);
+  // —— 浏览器 TTS 串行播放 ——
+  function _speakSegsBrowser(segs, rate, onDone) {
+    if (!segs.length) { _stopResumeTimer(); if (onDone) onDone(); return; }
+    const u = _makeUtterance(segs[0], rate);
+    u.onend   = () => _speakSegsBrowser(segs.slice(1), rate, onDone);
+    u.onerror = (e) => {
+      console.warn('[TTS] utterance error:', e.error || e);
+      _speakSegsBrowser(segs.slice(1), rate, onDone);
+    };
+    try { window.speechSynthesis.speak(u); }
+    catch (e) {
+      console.warn('[TTS] speak() threw:', e);
+      _speakSegsBrowser(segs.slice(1), rate, onDone);
+    }
   }
 
-  // 保持接口兼容
+  function _browserSpeak(text, rate, onDone) {
+    if (!window.speechSynthesis) {
+      console.warn('[TTS] 此环境不支持 speechSynthesis');
+      if (onDone) onDone(); return;
+    }
+    try { window.speechSynthesis.cancel(); } catch(e){}
+    _startResumeTimer();
+    _speakSegsBrowser(_splitText(text), rate, onDone);
+  }
+
+  // —— 用户手势解锁（首次任意点击触发一次静音 utterance）——
+  function _unlockTTS() {
+    if (_ttsUnlocked || !window.speechSynthesis) return;
+    try {
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0; u.lang = 'zh-CN';
+      window.speechSynthesis.speak(u);
+      _ttsUnlocked = true;
+      setTimeout(_refreshVoice, 200);
+      console.log('[TTS] 已通过用户手势解锁');
+    } catch(e) {
+      console.warn('[TTS] unlock failed:', e);
+    }
+  }
+  ['click','touchstart','keydown'].forEach(evt => {
+    document.addEventListener(evt, _unlockTTS, { once: true, capture: true });
+  });
+
+  // —— 统一入口 ——
+  // ttsSpeak(text, rate, onDone)
+  //   有 Azure 配置 → 走 Azure；失败自动回退浏览器 TTS
+  //   无 Azure 配置 → 直接浏览器 TTS
+  function ttsSpeak(text, rate, onDone) {
+    if (!text) { if (onDone) onDone(); return; }
+    _unlockTTS();
+
+    if (_hasAzure) {
+      speakWithAzure(text, AZURE_RATE, AZURE_PITCH)
+        .then(() => { if (onDone) onDone(); })
+        .catch(err => {
+          console.warn('[TTS] Azure 失败，回退浏览器：', err);
+          _browserSpeak(text, rate, onDone);
+        });
+    } else {
+      _browserSpeak(text, rate, onDone);
+    }
+  }
+
+  // 兼容旧别名
   function speakChinese(text, opts) {
     ttsSpeak(text, (opts && opts.browserRate) || 0.9, null);
   }
-
 
   // ═══════════════════════════════════════════════════════════════
   //  Azure Pronunciation Assessment 接口预留
@@ -1273,24 +1288,16 @@ button:focus-visible {
     if (isPlaying || isRecording) return;
     const btn   = document.getElementById('listenBtn');
     const label = document.getElementById('listenLabel');
-    if (!window.speechSynthesis) {
-      label.textContent = 'المتصفح لا يدعم النطق'; return;
-    }
 
     isPlaying = true;
     btn.classList.add('playing');
     label.innerHTML = '<span class="sound-waves"><span></span><span></span><span></span><span></span></span>&nbsp;&nbsp;جارٍ التشغيل';
 
-    // cancel() 清空队列，setTimeout(0) 给 Chrome 一个事件循环清空，然后再 speak
-    _stopResumeTimer();
-    window.speechSynthesis.cancel();
-    setTimeout(() => {
-      ttsSpeak(LESSONS[currentIndex].zh, 0.85, () => {
-        isPlaying = false;
-        btn.classList.remove('playing');
-        label.textContent = 'استمع للنطق الصحيح';
-      });
-    }, 50);
+    ttsSpeak(LESSONS[currentIndex].zh, 0.85, () => {
+      isPlaying = false;
+      btn.classList.remove('playing');
+      label.textContent = 'استمع للنطق الصحيح';
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1458,18 +1465,12 @@ button:focus-visible {
     requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('show')));
     document.getElementById('nextBtn').disabled = false;
 
-    // 反馈语音
-    if (window.speechSynthesis) {
-      _stopResumeTimer();
-      window.speechSynthesis.cancel();
-      setTimeout(() => {
-        ttsSpeak(praise.zh, 0.9, () => {
-          if (tipSpoken) {
-            setTimeout(() => ttsSpeak(tipSpoken, 0.85, null), 500);
-          }
-        });
-      }, 50);
-    }
+    // 反馈语音：鼓励语说完停顿后说建议
+    ttsSpeak(praise.zh, 0.9, () => {
+      if (tipSpoken) {
+        setTimeout(() => ttsSpeak(tipSpoken, 0.85, null), 500);
+      }
+    });
   }
 
   // 逐字颜色块渲染
