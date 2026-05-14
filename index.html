@@ -186,7 +186,8 @@ body::before {
   font-weight: 500;
   color: var(--ink);
   direction: ltr; letter-spacing: 2.5px;
-  line-height: 1.55; margin-bottom: 10px;
+  /* line-height 增大，为汉字正上方的 ruby 拼音留出空间 */
+  line-height: 2.05; margin-bottom: 6px;
   /* 中文允许在标点和空白处换行，整字不切，整个 .hz 不被拆开 */
   word-break: normal;
   overflow-wrap: break-word;
@@ -197,6 +198,31 @@ body::before {
   display: inline-block;
   white-space: nowrap;
 }
+
+/* ── 拼音排在汉字正上方（ruby 注音）─────────────────────
+   学生跟读时，眼睛只需看汉字即可顺带读出拼音；
+   原本汉字下方独立的整行拼音 .pinyin 不再显示，避免重复。 */
+.chinese ruby {
+  ruby-position: over;
+  -webkit-ruby-position: before;
+  ruby-align: center;
+}
+.chinese ruby rt.hz-py {
+  font-family: var(--font-py);
+  font-size: .38em;
+  font-weight: 600;
+  color: var(--indigo);
+  letter-spacing: .2px;
+  line-height: 1.1;
+  margin-bottom: 2px;
+  /* rt 默认 ltr，避免在 RTL 容器中被翻转 */
+  direction: ltr;
+  unicode-bidi: isolate;
+  user-select: none;
+}
+.chinese .hz.is-name ruby rt.hz-py { color: var(--violet); }
+/* 句子框里的整行拼音收起 —— 拼音已经在每个汉字上方显示 */
+.sentence-box > .pinyin { display: none !important; }
 
 /* ── HSK 等级角标（汉字右上角小数字）─────────────────── */
 /* 每个汉字用 .hz 包装，角标用 .hsk-badge 上标显示，
@@ -1468,49 +1494,49 @@ body.in-practice .view-practice { display: block; }
   /* —— body：取消垂直居中，改为顶部对齐，避免短内容上下产生空白 —— */
   body {
     align-items: flex-start;
-    padding: 6px 6px 12px;
+    padding: 2px 4px 6px;
     min-height: 100vh;
   }
-  .page-wrap { gap: 6px; max-width: 100%; }
+  .page-wrap { gap: 3px; max-width: 100%; }
 
   /* —— 整体瘦身：卡片内边距收紧 —— */
-  .card-body   { padding: 14px 14px 14px; }
+  .card-body   { padding: 8px 10px 10px; }
 
   /* —— 顶部状态栏：更紧凑 —— */
-  .top-stats { margin-bottom: 8px; gap: 8px; padding: 0 2px; }
-  .streak-pill, .daily-stars { font-size: 11px; padding: 4px 9px; border-radius: 12px; }
-  .streak-icon { font-size: 12px; }
-  .daily-star { font-size: 12px; }
+  .top-stats { margin-bottom: 4px; gap: 6px; padding: 0 2px; }
+  .streak-pill, .daily-stars { font-size: 10.5px; padding: 3px 8px; border-radius: 11px; }
+  .streak-icon { font-size: 11px; }
+  .daily-star { font-size: 11px; }
 
   /* —— 标题区：缩小并紧贴 —— */
-  .header      { margin-bottom: 10px; }
-  .title       { font-size: 16px; line-height: 1.3; }
-  .subtitle    { margin-top: 2px; font-size: 10.5px; }
-  .current-pack-tag { margin-top: 5px; padding: 3px 9px; font-size: 11.5px; }
+  .header      { margin-bottom: 5px; }
+  .title       { font-size: 14px; line-height: 1.25; }
+  .subtitle    { margin-top: 1px; font-size: 10px; }
+  .current-pack-tag { margin-top: 3px; padding: 2px 8px; font-size: 11px; }
 
   /* —— 进度点：更紧凑 —— */
-  .progress { margin-bottom: 10px; gap: 4px; }
-  .progress-dot { width: 14px; height: 3px; }
-  .progress-dot.active { width: 20px; }
+  .progress { margin-bottom: 5px; gap: 3px; }
+  .progress-dot { width: 12px; height: 3px; }
+  .progress-dot.active { width: 18px; }
 
   /* —— 句子框：默认紧凑 —— */
   .sentence-box {
-    padding: 12px 12px 11px; margin-bottom: 10px; border-radius: 16px;
+    padding: 7px 10px 8px; margin-bottom: 6px; border-radius: 14px;
     transition: padding .25s, margin .25s, opacity .25s, transform .25s;
   }
-  /* .chinese 字号由 clamp() 控制，这里只调字距和行高 */
-  .chinese     { letter-spacing: 1.6px; line-height: 1.35; margin-bottom: 5px; }
+  /* .chinese 字号由 clamp() 控制，这里只调字距和行高（ruby 拼音需要更大行高） */
+  .chinese     { letter-spacing: 1.4px; line-height: 1.95; margin-bottom: 2px; }
   .pinyin      { font-size: 14px; margin-bottom: 5px; line-height: 1.3; }
-  .arabic-meaning { font-size: 13.5px; line-height: 1.5; padding-top: 6px; }
+  .arabic-meaning { font-size: 12.5px; line-height: 1.4; padding-top: 4px; }
   .hint-row {
-    margin-top: 6px; padding-top: 6px; gap: 4px;
+    margin-top: 4px; padding-top: 4px; gap: 4px;
     transition: max-height .25s, opacity .25s, margin .25s, padding .25s;
     overflow: hidden;
   }
-  .hint-text { font-size: 11.5px; line-height: 1.5; }
+  .hint-text { font-size: 11px; line-height: 1.45; }
   .hint-icon { font-size: 10px; }
   /* 声调图按钮：默认折叠（max-height:0），按钮本身收紧 */
-  .tone-toggle { margin-top: 5px; padding: 3px 8px; font-size: 10px; }
+  .tone-toggle { margin-top: 3px; padding: 2px 7px; font-size: 10px; }
 
   /* —— 评分出现后：句子框收缩，把空间让给反馈卡片 —— */
   /* hint-row 折叠不可见，节省 ~40px */
@@ -1518,51 +1544,51 @@ body.in-practice .view-practice { display: block; }
     max-height: 0; opacity: 0;
     margin-top: 0; padding-top: 0; border-top-color: transparent;
   }
-  body.has-feedback .sentence-box { padding-bottom: 8px; margin-bottom: 8px; }
+  body.has-feedback .sentence-box { padding-bottom: 5px; margin-bottom: 5px; }
 
   /* —— 听力按钮 + 速度按钮：更紧凑 —— */
-  .listen-row { margin-bottom: 8px; gap: 6px; }
-  .listen-btn { padding: 9px 14px; font-size: 13px; border-radius: 12px; margin-bottom: 0; }
-  .listen-btn svg { width: 15px; height: 15px; }
-  .speed-btn   { width: 44px; font-size: 11px; padding: 9px 0; }
+  .listen-row { margin-bottom: 5px; gap: 6px; }
+  .listen-btn { padding: 7px 12px; font-size: 12.5px; border-radius: 11px; margin-bottom: 0; }
+  .listen-btn svg { width: 14px; height: 14px; }
+  .speed-btn   { width: 42px; font-size: 11px; padding: 7px 0; }
 
   /* —— 麦克风区：核心瘦身 —— */
-  .mic-section { margin-bottom: 8px; }
-  .mic-status  { min-height: 30px; margin-bottom: 5px; }
-  .mic-status-ar { font-size: 11.5px; line-height: 1.3; }
-  .mic-status-zh { font-size: 10.5px; }
-  .soundwave-bar.active { height: 20px; margin-bottom: 5px; }
-  .mic-btn     { width: 78px; height: 78px; }
-  .mic-btn-icon { font-size: 20px; }
+  .mic-section { margin-bottom: 4px; }
+  .mic-status  { min-height: 22px; margin-bottom: 3px; }
+  .mic-status-ar { font-size: 11px; line-height: 1.25; }
+  .mic-status-zh { font-size: 10px; }
+  .soundwave-bar.active { height: 16px; margin-bottom: 3px; }
+  .mic-btn     { width: 68px; height: 68px; }
+  .mic-btn-icon { font-size: 18px; }
   .mic-btn-label { font-size: 9px; }
 
   /* —— 反馈卡片：精简（评分出现后才占空间） —— */
-  .feedback { margin-bottom: 8px; }
-  .feedback-card { padding: 12px 12px 10px; border-radius: 16px; }
-  .fb-top { margin-bottom: 4px; gap: 8px; }
-  .fb-score    { font-size: 34px; }
-  .fb-emoji    { font-size: 22px; }
+  .feedback { margin-bottom: 5px; }
+  .feedback-card { padding: 8px 10px 8px; border-radius: 14px; }
+  .fb-top { margin-bottom: 3px; gap: 7px; }
+  .fb-score    { font-size: 30px; }
+  .fb-emoji    { font-size: 20px; }
   .fb-praise-zh { font-size: 12px; margin-bottom: 1px; }
-  .fb-praise-ar { font-size: 11px; margin-bottom: 6px; line-height: 1.4; }
-  .fb-chars { gap: 5px; margin-bottom: 6px; }
-  .fb-char-hz { font-size: 18px; padding: 3px 6px; }
+  .fb-praise-ar { font-size: 11px; margin-bottom: 4px; line-height: 1.3; }
+  .fb-chars { gap: 4px; margin-bottom: 4px; }
+  .fb-char-hz { font-size: 17px; padding: 2px 5px; }
   .fb-char-py { font-size: 9.5px; }
-  .fb-legend { margin-bottom: 6px; gap: 10px; }
+  .fb-legend { margin-bottom: 4px; gap: 9px; }
   .fb-legend-item { font-size: 9.5px; }
-  .fb-tip { padding: 6px 8px; }
-  .fb-tip-text { font-size: 11px; line-height: 1.5; }
+  .fb-tip { padding: 5px 7px; }
+  .fb-tip-text { font-size: 10.5px; line-height: 1.4; }
   /* 重试 + 分享按钮（fb-actions）变小 */
-  .fb-actions { margin-top: 8px; gap: 6px; }
-  .retry-btn, .share-btn { padding: 8px 10px; font-size: 12px; }
-  .retry-btn svg, .share-btn svg { width: 14px; height: 14px; }
+  .fb-actions { margin-top: 5px; gap: 6px; }
+  .retry-btn, .share-btn { padding: 6px 9px; font-size: 11.5px; }
+  .retry-btn svg, .share-btn svg { width: 13px; height: 13px; }
 
   /* —— "下一句"按钮：紧凑、流式（紧跟反馈卡片之后，不悬浮） —— */
   .next-btn {
-    padding: 12px 16px;
-    font-size: 14px;
-    border-radius: 12px;
+    padding: 9px 14px;
+    font-size: 13px;
+    border-radius: 11px;
   }
-  .next-btn svg { width: 16px; height: 16px; }
+  .next-btn svg { width: 15px; height: 15px; }
 
   /* —— 倒计时、分享页等弹层缩小 —— */
   .countdown-number { font-size: 110px; }
@@ -1582,6 +1608,52 @@ body.in-practice .view-practice { display: block; }
   /* —— 人名标签在窄屏保底字号，确保可读 —— */
   .name-tag { font-size: 10px; padding: 1.5px 4px; top: -.25em; }
 }
+
+/* ═════════════════════════════════════════════════════════════
+   低高度手机（≤ 720px）进一步压缩，覆盖 iPhone SE、安卓小屏，
+   目的是练习页核心元素一屏内完整可见，无需上下滑动。
+   ═════════════════════════════════════════════════════════════ */
+@media (max-width: 499px) and (max-height: 720px) {
+  body { padding: 1px 4px 3px; }
+  .page-wrap { gap: 2px; }
+  .card-body { padding: 6px 9px 8px; }
+  .top-stats { margin-bottom: 2px; }
+  .header { margin-bottom: 3px; }
+  .title  { font-size: 13px; }
+  .current-pack-tag { margin-top: 2px; padding: 1px 7px; font-size: 10.5px; }
+  .progress { margin-bottom: 3px; }
+  .progress-dot { height: 2px; width: 10px; }
+  .progress-dot.active { width: 16px; }
+  .sentence-box { padding: 5px 8px 6px; margin-bottom: 4px; border-radius: 12px; }
+  .chinese { font-size: clamp(22px, 6vw, 30px); line-height: 1.85; margin-bottom: 1px; }
+  .arabic-meaning { font-size: 11.5px; padding-top: 3px; }
+  .hint-text { font-size: 10.5px; line-height: 1.35; }
+  .tone-toggle { margin-top: 2px; padding: 1px 6px; font-size: 9.5px; }
+  .listen-row { margin-bottom: 3px; }
+  .listen-btn { padding: 6px 10px; font-size: 12px; }
+  .speed-btn  { padding: 6px 0; font-size: 10.5px; }
+  .mic-section { margin-bottom: 2px; }
+  .mic-status { min-height: 18px; margin-bottom: 2px; }
+  .mic-status-ar { font-size: 10.5px; }
+  .mic-status-zh { font-size: 9.5px; }
+  .mic-btn { width: 60px; height: 60px; }
+  .mic-btn-icon { font-size: 16px; }
+  .feedback-card { padding: 6px 9px 6px; border-radius: 12px; }
+  .fb-score { font-size: 26px; }
+  .fb-emoji { font-size: 18px; }
+  .fb-praise-zh { font-size: 11px; }
+  .fb-praise-ar { font-size: 10.5px; margin-bottom: 3px; }
+  .fb-chars { gap: 3px; margin-bottom: 3px; }
+  .fb-char-hz { font-size: 15px; padding: 2px 4px; }
+  .fb-char-py { font-size: 9px; }
+  .fb-legend { margin-bottom: 3px; gap: 8px; }
+  .fb-legend-item { font-size: 9px; }
+  .fb-tip { padding: 4px 6px; }
+  .fb-tip-text { font-size: 10px; line-height: 1.35; }
+  .fb-actions { margin-top: 4px; }
+  .retry-btn, .share-btn { padding: 5px 8px; font-size: 11px; }
+  .next-btn { padding: 7px 12px; font-size: 12.5px; }
+}
 @media (min-width: 500px) and (min-height: 700px) {
   .card-body { padding: 28px 24px 24px; }
 }
@@ -1593,7 +1665,7 @@ body.in-practice .view-practice { display: block; }
 @media (min-width: 500px) and (max-width: 899px) {
   .page-wrap { max-width: 560px; }
   .card-body { padding: 28px 28px 24px; }
-  .chinese   { letter-spacing: 3px; line-height: 1.5; }
+  .chinese   { letter-spacing: 2.4px; line-height: 2.0; }
   .arabic-meaning { font-size: 15px; }
   .pinyin    { font-size: 16px; }
   /* 场景卡片：2 列 */
@@ -3435,12 +3507,25 @@ body.in-practice .view-practice { display: block; }
   async function assessWithFallback(audioBlob, referenceText) {
     return new Promise(resolve => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { resolve(makeMockResult(referenceText, '', 0.68 + Math.random() * 0.18)); return; }
+      if (!SR) { resolve(makeMockResult(referenceText, '', 0.72)); return; }
       const rec = new SR();
       rec.lang = 'zh-CN'; rec.continuous = false;
-      rec.interimResults = false; rec.maxAlternatives = 3;
+      rec.interimResults = false; rec.maxAlternatives = 5;
       rec.onresult = e => {
-        resolve(makeMockResult(referenceText, e.results[0][0].transcript.trim(), e.results[0][0].confidence || 0.72));
+        // 在多个候选中，选与参考文本最相似的那一个 —— 浏览器有时
+        // 会把次优候选放到第一位，原代码无脑取 [0] 会导致标准发音被误判
+        const alts = e.results[0];
+        let bestText = '', bestConf = 0, bestSim = -1;
+        for (let i = 0; i < alts.length; i++) {
+          const t  = (alts[i].transcript || '').trim();
+          const c  = alts[i].confidence || 0;
+          const sm = calculateSimilarity(t, referenceText);
+          // 主排序按相似度，相似度相同时取置信度更高的
+          if (sm > bestSim || (sm === bestSim && c > bestConf)) {
+            bestSim = sm; bestText = t; bestConf = c;
+          }
+        }
+        resolve(makeMockResult(referenceText, bestText, bestConf || 0.72));
       };
       rec.onerror = e => {
         if (e.error === 'no-speech')    resolve(null);
@@ -3454,18 +3539,65 @@ body.in-practice .view-practice { display: block; }
   }
 
   function makeMockResult(referenceText, transcript, confidence) {
-    const sim  = calculateSimilarity(transcript, referenceText);
-    const base = Math.round(sim * 0.6 + confidence * 100 * 0.4);
-    const j    = () => Math.round((Math.random() - 0.5) * 14);
-    const cl   = v => Math.min(100, Math.max(0, v));
-    const wlf  = Array.from(referenceText).map(hz => {
-      const found = transcript.includes(hz);
-      const s = found ? cl(base + Math.round(Math.random() * 15)) : cl(base - Math.round(Math.random() * 38));
-      return { word: hz, accuracyScore: s, errorType: s >= 80 ? 'None' : s >= 55 ? 'Mispronunciation' : 'Missing' };
+    const refNorm   = _normalizeZh(referenceText);
+    const trNorm    = _normalizeZh(transcript);
+    const sim       = calculateSimilarity(transcript, referenceText); // 0-100
+
+    // 置信度归一到 0-100，浏览器对中文的置信度通常偏低，这里做一次轻校准。
+    // confidence 在 [0,1]，0 表示未提供 → 给中性 75。
+    let conf100;
+    if (!confidence || confidence <= 0) {
+      conf100 = 75;
+    } else {
+      // 置信度 0.5 → 75，0.8 → 90，1.0 → 100；平滑曲线，避免标准发音被压低
+      conf100 = Math.min(100, 50 + confidence * 55);
+    }
+
+    // 综合发音分：相似度为主导（80%），置信度辅助（20%）
+    let base = sim * 0.80 + conf100 * 0.20;
+
+    // 完全一致：直接给优秀分，不再随机扰动
+    if (refNorm && trNorm && refNorm === trNorm) {
+      base = Math.max(base, 92);
+    }
+    // 高相似度（≥90%）也保底优秀
+    if (sim >= 90) base = Math.max(base, 88);
+
+    const cl = v => Math.min(100, Math.max(0, Math.round(v)));
+    const pron = cl(base);
+
+    // 各子项分数：基于真实匹配，不再随机
+    const accuracy = pron;
+    const fluency  = trNorm.length === 0 ? 0
+                   : cl(60 + (trNorm.length / Math.max(1, refNorm.length)) * 35);
+    const completeness = refNorm.length === 0 ? 0
+                       : cl((Math.min(trNorm.length, refNorm.length) / refNorm.length) * 100);
+    const tone = pron; // 无 Azure 时无法独立判声调，与综合分一致
+
+    // 字级反馈：完全基于"该字是否在转写中按序出现"，不再随机
+    // 使用一次匹配指针，避免重复字被多次匹配
+    const refChars = Array.from(refNorm);
+    const tArr     = Array.from(trNorm);
+    let p = 0;
+    const wlf = refChars.map(hz => {
+      let found = false;
+      // 在剩余转写中查找该字（允许少量乱序，向前看 2 字）
+      for (let k = p; k < Math.min(tArr.length, p + 3); k++) {
+        if (tArr[k] === hz) { found = true; p = k + 1; break; }
+      }
+      // 兜底：在整段转写中查找
+      if (!found && tArr.includes(hz)) found = true;
+      // 字级分数：识别到 → 跟综合分接近；未识别到 → 显著低分
+      const s = found ? cl(pron + 2) : cl(Math.max(35, pron - 35));
+      return {
+        word: hz, accuracyScore: s,
+        errorType: s >= 80 ? 'None' : s >= 55 ? 'Mispronunciation' : 'Missing',
+      };
     });
+
     return {
-      pronunciationScore: cl(base), accuracyScore: cl(base+j()), fluencyScore: cl(base+j()),
-      completenessScore: transcript.length > 0 ? cl(base+j()) : 30, toneScore: cl(base+j()),
+      pronunciationScore: pron, accuracyScore: accuracy, fluencyScore: fluency,
+      completenessScore: completeness, toneScore: tone,
       transcript, wordLevelFeedback: wlf, mainSuggestion: null, source: 'fallback',
     };
   }
@@ -3480,15 +3612,53 @@ body.in-practice .view-practice { display: block; }
     return `"${worst.word}"这个字，再听一遍，跟我说。`;
   }
 
+  // ── 文本归一化：清理标点空白，繁简差异，处理大小写 ───
+  // 标准朗读经常被原算法误判，是因为转写带空格/标点而参考文本不带，
+  // 或者只是顺序不同。归一化后再比对，标准发音稳定高分。
+  function _normalizeZh(s) {
+    if (!s) return '';
+    return String(s)
+      // 去除所有非汉字字符（标点、空格、英文、ASCII数字）
+      .replace(/[^\u4e00-\u9fff]/g, '')
+      .trim();
+  }
   function calculateSimilarity(a, b) {
     if (!a || !b) return 0;
-    if (a === b) return 100;
-    const aC = Array.from(a), bC = Array.from(b);
+    const A = _normalizeZh(a), B = _normalizeZh(b);
+    if (!A || !B) return 0;
+    if (A === B) return 100;                 // 完全一致 → 满分
+
+    // 1) 字符多重集匹配率（正确处理重复字）
+    const freq = {};
+    for (const ch of B) freq[ch] = (freq[ch] || 0) + 1;
     let matched = 0;
-    bC.forEach(c => { if (aC.includes(c)) matched++; });
-    const charScore = (matched / bC.length) * 100;
-    const lenScore  = (1 - Math.abs(aC.length - bC.length) / Math.max(aC.length, bC.length)) * 100;
-    return Math.min(100, charScore * 0.7 + lenScore * 0.3);
+    for (const ch of A) {
+      if (freq[ch] > 0) { matched++; freq[ch]--; }
+    }
+    const charScore = (matched / B.length) * 100;
+
+    // 2) 顺序得分：基于编辑距离（Levenshtein），鼓励同序朗读
+    const aArr = Array.from(A), bArr = Array.from(B);
+    const m = aArr.length, n = bArr.length;
+    const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = aArr[i-1] === bArr[j-1]
+          ? dp[i-1][j-1]
+          : 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
+      }
+    }
+    const editScore = (1 - dp[m][n] / Math.max(m, n)) * 100;
+
+    // 3) 长度匹配：完整朗读不被错扣分（短缺一个字也只扣一点）
+    const lenScore = (1 - Math.abs(m - n) / Math.max(m, n)) * 100;
+
+    // 综合：字符匹配 50% + 顺序 35% + 长度 15%
+    return Math.max(0, Math.min(100,
+      charScore * 0.50 + editScore * 0.35 + lenScore * 0.15
+    ));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -3599,7 +3769,9 @@ body.in-practice .view-practice { display: block; }
           : '';
         const isName = chars[ci].name === true;
         const cls = 'hz' + (isName ? ' is-name' : '');
-        html += `<span class="${cls}">${escHtml(ch)}${badge}</span>` + nameTagFor(ci);
+        // 把每个字的拼音用 <ruby> 排在汉字正上方，方便跟读
+        const py = escHtml(chars[ci].py || '');
+        html += `<span class="${cls}"><ruby>${escHtml(ch)}<rt class="hz-py">${py}</rt></ruby>${badge}</span>` + nameTagFor(ci);
         ci++;
       } else {
         html += escHtml(ch);
@@ -3778,22 +3950,22 @@ body.in-practice .view-practice { display: block; }
   // 反馈语全部使用 HSK 1-3 级范围内的字词
   const praiseLines = {
     excellent: [
-      { zh: '说得很好，发音很自然！',           ar: 'ممتاز! نطقك جميل جداً.' },
-      { zh: '很好，声调也很对！',               ar: 'رائع! النطق والنبرة كلاهما صحيحان.' },
-      { zh: '说得真好，像中国人一样！',         ar: 'أحسنت! تتحدث مثل أهل اللغة.' },
-      { zh: '太好了，你学得很快！',             ar: 'مثالي! أنت تتعلم بسرعة كبيرة.' },
+      { zh: '说得很好！',     ar: 'ممتاز!' },
+      { zh: '声调很准。',     ar: 'النغمة دقيقة.' },
+      { zh: '发音地道。',     ar: 'نطق أصيل!' },
+      { zh: '太棒了！',       ar: 'رائع جداً!' },
     ],
     good: [
-      { zh: '很接近了，再听听声调。',           ar: 'جيد جداً، انتبه للنغمة قليلاً.' },
-      { zh: '不错！多练几次会更好。',           ar: 'جيد! ستتحسن مع التدرب.' },
-      { zh: '有进步！再来一次吧。',             ar: 'تقدمت! جرب مرة أخرى.' },
-      { zh: '差一点，再来一次！',               ar: 'تقريباً! حاول مرة أخرى.' },
+      { zh: '不错，加油。',   ar: 'جيد، استمر.' },
+      { zh: '很接近了。',     ar: 'قريب جداً!' },
+      { zh: '有进步。',       ar: 'تقدمت!' },
+      { zh: '再练一次。',     ar: 'كرّر مرة.' },
     ],
     tryAgain: [
-      { zh: '没关系，我们再来一次。',           ar: 'لا بأس، حاول مرة أخرى ببطء.' },
-      { zh: '先听一遍，再跟着说。',             ar: 'استمع أولاً ثم اتبعني، أنت قادر.' },
-      { zh: '不要着急，我们再来一次！',         ar: 'لا تستعجل، حاول مجدداً.' },
-      { zh: '没事，多练几次就好了。',           ar: 'لا بأس، التكرار يصنع الإتقان.' },
+      { zh: '再来一次。',     ar: 'حاول مجدداً.' },
+      { zh: '慢一点说。',     ar: 'تمهّل قليلاً.' },
+      { zh: '别着急。',       ar: 'لا تستعجل.' },
+      { zh: '多练几次。',     ar: 'تدرّب أكثر.' },
     ],
   };
 
