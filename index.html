@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>تدرّب على نطق الصينية</title>
+
+<!-- PWA: add to home screen -->
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="نطق الصينية">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='180' height='180' rx='40' fill='url(%23g)'/%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' font-family='sans-serif' font-size='90' font-weight='700' fill='white'%3E中%3C/text%3E%3C/svg%3E">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -537,11 +546,841 @@ body::before {
 .next-btn svg { width: 17px; height: 17px; }
 [dir="rtl"] .next-btn svg { transform: scaleX(-1); }
 
+/* 占位框只在桌面双列时可见 */
+.dt-placeholder { display: none; }
+
 /* ── Focus ring ─────────────────────────────────────────────── */
 button:focus-visible {
   outline: 2.5px solid var(--indigo);
   outline-offset: 3px;
 }
+
+/* ═════════════════════════════════════════════════════════════ */
+/*                     新增功能样式 NEW FEATURES                  */
+/* ═════════════════════════════════════════════════════════════ */
+
+/* ── 顶部状态栏：Streak + 每日星星 ──────────────────────────── */
+.top-stats {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 14px; padding: 0 4px;
+}
+.streak-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1px solid #fed7aa;
+  font-family: var(--font-py);
+  font-size: 12px; font-weight: 700; color: #c2410c;
+  direction: ltr;
+  transition: transform .2s;
+}
+.streak-pill.zero {
+  background: #f8fafc; border-color: var(--line); color: var(--muted);
+}
+.streak-pill.bump { animation: pillBump .5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes pillBump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.streak-icon { font-size: 14px; line-height: 1; }
+
+.daily-stars {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 12px; border-radius: 14px;
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  direction: ltr;
+}
+.daily-star {
+  font-size: 13px; line-height: 1; transition: transform .3s;
+  filter: grayscale(1); opacity: .35;
+}
+.daily-star.lit {
+  filter: none; opacity: 1;
+  animation: starPop .5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes starPop {
+  0%   { transform: scale(.3) rotate(-20deg); }
+  60%  { transform: scale(1.3) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* ── 连击计数器 ─────────────────────────────────────────────── */
+.combo-badge {
+  position: absolute; top: 14px; left: 14px;
+  display: flex; align-items: center; gap: 3px;
+  padding: 5px 10px; border-radius: 12px;
+  background: linear-gradient(135deg, #f43f5e, #fb923c);
+  color: #fff;
+  font-family: var(--font-py);
+  font-size: 12px; font-weight: 800;
+  direction: ltr; letter-spacing: .3px;
+  box-shadow: 0 4px 12px rgba(244,63,94,.4);
+  opacity: 0; transform: scale(.5);
+  transition: opacity .25s, transform .25s cubic-bezier(.34,1.56,.64,1);
+  pointer-events: none; z-index: 10;
+}
+.combo-badge.show { opacity: 1; transform: scale(1); }
+.combo-badge.bump { animation: comboBump .55s cubic-bezier(.34,1.56,.64,1); }
+@keyframes comboBump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35) rotate(-3deg); }
+  100% { transform: scale(1); }
+}
+.combo-fire { font-size: 13px; }
+
+/* 连击爆发粒子层 */
+.combo-burst {
+  position: absolute; inset: 0;
+  pointer-events: none; overflow: hidden;
+  border-radius: var(--card-radius);
+}
+.combo-burst span {
+  position: absolute;
+  font-size: 18px;
+  animation: burstFly 1s ease-out forwards;
+  opacity: 0;
+}
+@keyframes burstFly {
+  0%   { opacity: 1; transform: translate(0,0) scale(.5) rotate(0); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.2) rotate(var(--rot)); }
+}
+
+/* ── 速度按钮（与播放按钮组合）──────────────────────────────── */
+.listen-row {
+  display: flex; gap: 8px; margin-bottom: 18px;
+}
+.listen-row .listen-btn {
+  flex: 1; margin-bottom: 0;
+}
+.speed-btn {
+  flex-shrink: 0;
+  width: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-family: var(--font-py);
+  font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, color .2s;
+  letter-spacing: -.5px;
+}
+.speed-btn.active {
+  border-color: var(--indigo);
+  color: var(--indigo);
+  background: var(--indigo-xlight);
+}
+.speed-btn:hover {
+  border-color: var(--indigo-mid);
+  color: var(--indigo);
+}
+
+/* ── 倒计时遮罩 ─────────────────────────────────────────────── */
+.countdown-overlay {
+  position: fixed; inset: 0;
+  background: rgba(30,27,75,.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.countdown-overlay.show { display: flex; }
+.countdown-number {
+  font-family: var(--font-py);
+  font-size: 140px; font-weight: 800;
+  color: #fff;
+  text-shadow: 0 8px 30px rgba(99,102,241,.5);
+  animation: countdownPop .9s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes countdownPop {
+  0%   { transform: scale(.3); opacity: 0; }
+  30%  { transform: scale(1.2); opacity: 1; }
+  70%  { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(.7);  opacity: 0; }
+}
+.countdown-number.go {
+  font-size: 80px;
+  background: linear-gradient(135deg, #10b981, #34d399);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+}
+
+/* ── 反馈卡片中的"再试一次"按钮 ─────────────────────────────── */
+.fb-actions {
+  display: flex; gap: 8px;
+  margin-top: 12px;
+  direction: ltr;
+}
+.fb-actions button {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-family: var(--font-ar);
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid;
+  background: rgba(255,255,255,.7);
+  transition: transform .15s, box-shadow .15s, background .15s;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.fb-actions button:hover { transform: translateY(-1px); }
+.fb-actions button svg { width: 14px; height: 14px; flex-shrink: 0; }
+.fb-actions .retry-btn {
+  border-color: rgba(0,0,0,.08);
+  color: var(--slate);
+}
+.fb-actions .retry-btn:hover {
+  background: #fff; border-color: var(--indigo-mid); color: var(--indigo);
+}
+.fb-actions .share-btn {
+  background: linear-gradient(135deg, var(--indigo), var(--violet));
+  color: #fff; border-color: transparent;
+  box-shadow: 0 3px 10px rgba(99,102,241,.3);
+}
+.fb-actions .share-btn:hover {
+  box-shadow: 0 5px 14px rgba(99,102,241,.4);
+}
+.fb-actions .share-btn.hidden { display: none; }
+
+/* ── 今日目标达成弹窗 ───────────────────────────────────────── */
+.celebrate-overlay {
+  position: fixed; inset: 0;
+  background: rgba(30,27,75,.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.celebrate-overlay.show { display: flex; animation: fadeIn .3s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.celebrate-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 32px 26px 24px;
+  max-width: 340px; width: 100%;
+  text-align: center;
+  position: relative;
+  animation: celebratePop .6s cubic-bezier(.34,1.56,.64,1);
+  box-shadow: 0 20px 60px rgba(99,102,241,.3);
+}
+@keyframes celebratePop {
+  0%   { transform: scale(.4) translateY(40px); opacity: 0; }
+  60%  { transform: scale(1.05) translateY(0);   opacity: 1; }
+  100% { transform: scale(1) translateY(0); }
+}
+.celebrate-emoji {
+  font-size: 64px; line-height: 1; margin-bottom: 10px;
+  animation: floaty 2.5s ease-in-out infinite;
+}
+@keyframes floaty {
+  0%,100% { transform: translateY(0) rotate(0); }
+  50%      { transform: translateY(-6px) rotate(4deg); }
+}
+.celebrate-title-ar {
+  font-size: 22px; font-weight: 700;
+  color: var(--ink); margin-bottom: 6px;
+}
+.celebrate-title-zh {
+  font-family: var(--font-zh);
+  font-size: 16px; font-weight: 500;
+  color: var(--indigo); margin-bottom: 16px;
+  direction: ltr;
+}
+.celebrate-streak {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1.5px solid #fed7aa;
+  font-family: var(--font-py);
+  font-size: 15px; font-weight: 700; color: #c2410c;
+  margin-bottom: 18px;
+  direction: ltr;
+}
+.celebrate-btn {
+  width: 100%;
+  padding: 13px 16px;
+  background: linear-gradient(135deg, var(--indigo), var(--violet));
+  color: #fff; border: none; border-radius: 14px;
+  font-family: var(--font-ar);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(99,102,241,.32);
+}
+.celebrate-confetti {
+  position: absolute; inset: 0;
+  pointer-events: none; overflow: hidden;
+  border-radius: 24px;
+}
+.celebrate-confetti span {
+  position: absolute; top: -10px;
+  font-size: 16px;
+  animation: confettiFall 2.5s linear infinite;
+}
+@keyframes confettiFall {
+  0%   { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(400px) rotate(720deg); opacity: 0; }
+}
+
+/* ── 分享卡片预览 ───────────────────────────────────────────── */
+.share-overlay {
+  position: fixed; inset: 0;
+  background: rgba(30,27,75,.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.share-overlay.show { display: flex; animation: fadeIn .25s; }
+.share-modal {
+  width: 100%; max-width: 360px;
+  background: #fff; border-radius: 22px;
+  padding: 18px;
+  animation: celebratePop .45s cubic-bezier(.34,1.56,.64,1);
+}
+.share-preview {
+  border-radius: 16px;
+  padding: 24px 20px;
+  background: linear-gradient(160deg, #6366f1 0%, #7c3aed 100%);
+  color: #fff;
+  text-align: center;
+  margin-bottom: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.share-preview::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 0%, rgba(255,255,255,.18) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 100%, rgba(255,255,255,.12) 0%, transparent 60%);
+}
+.share-preview > * { position: relative; z-index: 1; }
+.share-brand {
+  font-family: var(--font-py);
+  font-size: 10px; font-weight: 600;
+  opacity: .85; letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.share-zh {
+  font-family: var(--font-zh);
+  font-size: 30px; font-weight: 500;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+  direction: ltr;
+}
+.share-py {
+  font-family: var(--font-py);
+  font-size: 13px; font-weight: 600;
+  opacity: .85; letter-spacing: .4px;
+  margin-bottom: 12px;
+  direction: ltr;
+}
+.share-score-big {
+  font-family: var(--font-py);
+  font-size: 60px; font-weight: 800;
+  letter-spacing: -2px; line-height: 1;
+  margin-bottom: 2px;
+  direction: ltr;
+}
+.share-score-label {
+  font-size: 11px;
+  opacity: .85;
+  letter-spacing: .5px;
+  margin-bottom: 14px;
+}
+.share-tagline {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: .95;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.2);
+}
+.share-actions {
+  display: flex; gap: 8px;
+}
+.share-actions button {
+  flex: 1;
+  padding: 11px 8px;
+  border-radius: 12px;
+  font-family: var(--font-ar);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--slate);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.share-actions button:hover {
+  border-color: var(--indigo); color: var(--indigo);
+}
+.share-actions button svg { width: 14px; height: 14px; }
+.share-close {
+  position: absolute; top: 14px; left: 14px;
+  width: 30px; height: 30px;
+  background: rgba(0,0,0,.06);
+  border: none; border-radius: 50%;
+  cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--slate);
+  z-index: 5;
+}
+.share-close:hover { background: rgba(0,0,0,.1); }
+
+/* 隐藏的 canvas，用来生成下载图片 */
+#shareCanvas { display: none; }
+
+/* ── TTS 引擎指示徽章 ───────────────────────────────────────── */
+/* 固定在视口左下角的小标识，告诉用户/开发者当前使用哪个 TTS 引擎 */
+.tts-engine-badge {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 50;
+  font-family: var(--font-py);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  color: var(--muted);
+  background: rgba(255,255,255,.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 4px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.04);
+  direction: ltr;
+  pointer-events: none;
+  user-select: none;
+  opacity: .65;
+  transition: opacity .2s;
+}
+.tts-engine-badge:hover { opacity: 1; }
+.tts-engine-badge .tts-dot {
+  font-size: 11px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+
+/* ═════════════════════════════════════════════════════════════ */
+/*                    场景包选择 SCENARIO PACKS                    */
+/* ═════════════════════════════════════════════════════════════ */
+
+/* ── 视图切换器（默认显示场景选择，进入练习时隐藏）─────────── */
+.view-packs { display: block; }
+.view-practice { display: none; }
+body.in-practice .view-packs { display: none; }
+body.in-practice .view-practice { display: block; }
+
+/* ── 场景选择页 ─────────────────────────────────────────────── */
+.packs-card {
+  width: 100%;
+  background: var(--surface);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  border: 1px solid rgba(99,102,241,.08);
+  overflow: hidden;
+  position: relative;
+}
+.packs-header {
+  text-align: center;
+  padding: 24px 20px 14px;
+}
+.packs-title {
+  font-size: 20px; font-weight: 600;
+  color: var(--ink); line-height: 1.35;
+  letter-spacing: -.2px;
+  margin-bottom: 4px;
+}
+.packs-subtitle {
+  font-size: 11px; font-weight: 500; letter-spacing: .6px;
+  color: var(--muted); text-transform: uppercase;
+  font-family: var(--font-py);
+  direction: ltr;
+}
+
+.packs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 8px 18px 22px;
+}
+
+.pack-tile {
+  position: relative;
+  padding: 14px 12px 12px;
+  border-radius: 18px;
+  background: var(--indigo-xlight);
+  border: 1.5px solid rgba(99,102,241,.12);
+  cursor: pointer;
+  text-align: center;
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1),
+              border-color .2s, box-shadow .2s, background .2s;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  overflow: hidden;
+  min-height: 140px;
+}
+.pack-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--indigo-mid);
+  box-shadow: 0 8px 20px rgba(99,102,241,.18);
+}
+.pack-tile:active { transform: translateY(0); }
+
+/* 每个场景的主题色 */
+.pack-tile[data-color="indigo"] { background: #eef2ff; border-color: #c7d2fe; }
+.pack-tile[data-color="rose"]   { background: #fff1f2; border-color: #fecdd3; }
+.pack-tile[data-color="amber"]  { background: #fffbeb; border-color: #fde68a; }
+.pack-tile[data-color="green"]  { background: #ecfdf5; border-color: #a7f3d0; }
+.pack-tile[data-color="cyan"]   { background: #ecfeff; border-color: #a5f3fc; }
+.pack-tile[data-color="purple"] { background: #faf5ff; border-color: #e9d5ff; }
+
+.pack-emoji {
+  font-size: 32px; line-height: 1;
+  margin-bottom: 2px;
+  animation: emojiFloat 3s ease-in-out infinite;
+}
+@keyframes emojiFloat {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+.pack-tile:nth-child(even) .pack-emoji { animation-delay: .8s; }
+.pack-tile:nth-child(3n)   .pack-emoji { animation-delay: 1.4s; }
+
+.pack-name-ar {
+  font-size: 13.5px; font-weight: 600;
+  color: var(--ink); line-height: 1.2;
+}
+.pack-name-zh {
+  font-family: var(--font-zh);
+  font-size: 11.5px; font-weight: 500;
+  color: var(--slate);
+  direction: ltr;
+}
+
+/* 进度条 */
+.pack-progress {
+  width: 100%; height: 4px;
+  background: rgba(255,255,255,.7);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.pack-progress-fill {
+  height: 100%; width: 0%;
+  background: var(--indigo);
+  border-radius: 2px;
+  transition: width .6s cubic-bezier(.16,1,.3,1);
+}
+.pack-tile[data-color="rose"]   .pack-progress-fill { background: #f43f5e; }
+.pack-tile[data-color="amber"]  .pack-progress-fill { background: #f59e0b; }
+.pack-tile[data-color="green"]  .pack-progress-fill { background: #10b981; }
+.pack-tile[data-color="cyan"]   .pack-progress-fill { background: #06b6d4; }
+.pack-tile[data-color="purple"] .pack-progress-fill { background: #a855f7; }
+
+.pack-meta {
+  font-family: var(--font-py);
+  font-size: 10px;
+  color: var(--muted);
+  direction: ltr;
+  letter-spacing: .2px;
+}
+.pack-meta strong { color: var(--ink); font-weight: 700; }
+
+/* 已通关勋章 */
+.pack-badge {
+  position: absolute; top: 8px; left: 8px;
+  width: 22px; height: 22px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  box-shadow: 0 2px 6px rgba(245,158,11,.4);
+  color: #fff;
+  font-weight: 700;
+  animation: badgePop .5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes badgePop {
+  0%   { transform: scale(0); }
+  100% { transform: scale(1); }
+}
+
+/* 锁定状态 */
+.pack-tile.locked {
+  background: #f8fafc;
+  border-color: var(--line);
+  cursor: not-allowed;
+  opacity: .65;
+}
+.pack-tile.locked:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+.pack-tile.locked .pack-emoji {
+  filter: grayscale(1);
+  animation: none;
+}
+.pack-tile.locked .pack-name-ar,
+.pack-tile.locked .pack-name-zh {
+  color: var(--muted);
+}
+.pack-lock-icon {
+  position: absolute; top: 8px; right: 8px;
+  width: 22px; height: 22px;
+  background: var(--muted);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  color: #fff;
+}
+
+/* ── 练习视图：返回按钮（顶部）─────────────────────────────── */
+.back-btn {
+  position: absolute; top: 14px; right: 14px;
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--slate);
+  font-size: 14px;
+  z-index: 5;
+  transition: transform .15s, background .15s, color .15s;
+}
+.back-btn:hover {
+  background: #fff;
+  color: var(--indigo);
+  transform: scale(1.06);
+}
+.back-btn svg { width: 16px; height: 16px; }
+[dir="rtl"] .back-btn svg { transform: scaleX(-1); }
+
+/* 当前场景标识（替换原 subtitle）*/
+.current-pack-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 4px;
+  padding: 3px 9px;
+  background: var(--indigo-xlight);
+  border-radius: 10px;
+  font-family: var(--font-py);
+  font-size: 10px; font-weight: 600;
+  color: var(--indigo);
+  letter-spacing: .3px;
+}
+.current-pack-tag-emoji { font-size: 11px; }
+
+/* ── 声调曲线（可折叠）──────────────────────────────────────── */
+.tone-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px dashed rgba(99,102,241,.25);
+  border-radius: 8px;
+  font-family: var(--font-py);
+  font-size: 10.5px; font-weight: 600;
+  color: var(--indigo);
+  cursor: pointer;
+  direction: ltr;
+  transition: background .15s, border-color .15s;
+}
+.tone-toggle:hover {
+  background: rgba(99,102,241,.06);
+  border-color: rgba(99,102,241,.4);
+}
+.tone-toggle .chev {
+  transition: transform .2s;
+  font-size: 9px;
+}
+.tone-toggle.open .chev { transform: rotate(180deg); }
+
+.tone-curves {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .35s ease, margin-top .35s ease;
+  margin-top: 0;
+}
+.tone-curves.show {
+  max-height: 120px;
+  margin-top: 8px;
+}
+.tone-curves-inner {
+  display: flex; justify-content: center; align-items: flex-end;
+  gap: 10px;
+  padding: 8px 4px 4px;
+  flex-wrap: wrap;
+  direction: ltr;
+}
+.tone-curve {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px;
+  min-width: 38px;
+}
+.tone-curve-svg {
+  width: 38px; height: 36px;
+}
+.tone-curve-py {
+  font-family: var(--font-py);
+  font-size: 11px; font-weight: 700;
+  color: var(--indigo);
+  line-height: 1;
+}
+.tone-curve-hz {
+  font-family: var(--font-zh);
+  font-size: 13px; font-weight: 500;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+/* ── 场景通关证书弹窗 ───────────────────────────────────────── */
+.cert-overlay {
+  position: fixed; inset: 0;
+  background: rgba(30,27,75,.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.cert-overlay.show { display: flex; animation: fadeIn .3s; }
+
+.cert-modal {
+  width: 100%; max-width: 340px;
+  background: #fff;
+  border-radius: 24px;
+  padding: 18px;
+  animation: celebratePop .55s cubic-bezier(.34,1.56,.64,1);
+  position: relative;
+}
+.cert-card {
+  position: relative;
+  border-radius: 18px;
+  padding: 28px 22px 22px;
+  background: linear-gradient(160deg, #6366f1 0%, #7c3aed 100%);
+  color: #fff;
+  text-align: center;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.cert-card::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 0%, rgba(255,255,255,.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 100%, rgba(255,255,255,.14) 0%, transparent 60%);
+}
+.cert-card > * { position: relative; z-index: 1; }
+
+.cert-medal {
+  width: 72px; height: 72px;
+  margin: 0 auto 10px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px;
+  box-shadow: 0 8px 24px rgba(245,158,11,.5);
+  animation: medalSpin 1s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes medalSpin {
+  0%   { transform: scale(0) rotate(-180deg); }
+  60%  { transform: scale(1.1) rotate(15deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.cert-label {
+  font-family: var(--font-py);
+  font-size: 10px; font-weight: 600;
+  opacity: .85; letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.cert-pack-name-ar {
+  font-size: 20px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.cert-pack-name-zh {
+  font-family: var(--font-zh);
+  font-size: 14px; font-weight: 500;
+  opacity: .9;
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+  direction: ltr;
+}
+.cert-stats {
+  display: flex; justify-content: center;
+  gap: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.2);
+}
+.cert-stat { text-align: center; }
+.cert-stat-num {
+  font-family: var(--font-py);
+  font-size: 24px; font-weight: 800;
+  line-height: 1;
+  margin-bottom: 2px;
+  direction: ltr;
+}
+.cert-stat-label {
+  font-size: 10px;
+  opacity: .85;
+  letter-spacing: .3px;
+}
+
+.cert-actions {
+  display: flex; gap: 8px;
+}
+.cert-actions button {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: 12px;
+  font-family: var(--font-ar);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--slate);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  transition: border-color .15s, color .15s;
+}
+.cert-actions button:hover {
+  border-color: var(--indigo); color: var(--indigo);
+}
+.cert-actions button.primary {
+  background: linear-gradient(135deg, var(--indigo), var(--violet));
+  color: #fff; border-color: transparent;
+  box-shadow: 0 4px 12px rgba(99,102,241,.32);
+}
+.cert-actions button svg { width: 14px; height: 14px; }
+
+/* 解锁动画弹幕 */
+.unlock-toast {
+  position: fixed;
+  bottom: 80px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: linear-gradient(135deg, var(--indigo), var(--violet));
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(99,102,241,.4);
+  font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s, transform .3s cubic-bezier(.34,1.56,.64,1);
+  z-index: 150;
+  max-width: 88vw;
+}
+.unlock-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.unlock-toast-icon { font-size: 18px; }
 
 /* ── Mobile ─────────────────────────────────────────────────── */
 @media (max-width: 380px) {
@@ -551,9 +1390,169 @@ button:focus-visible {
   .mic-btn     { width: 94px; height: 94px; }
   .mic-btn-icon { font-size: 23px; }
   .fb-score    { font-size: 42px; }
+  .countdown-number { font-size: 110px; }
+  .countdown-number.go { font-size: 60px; }
+  .share-zh    { font-size: 26px; }
+  .share-score-big { font-size: 52px; }
+  .streak-pill, .daily-stars { font-size: 11px; padding: 5px 10px; }
+  .speed-btn   { width: 50px; font-size: 11px; }
+  .pack-tile   { min-height: 130px; padding: 12px 10px; }
+  .pack-emoji  { font-size: 28px; }
+  .pack-name-ar { font-size: 12.5px; }
+  .pack-name-zh { font-size: 11px; }
+  .packs-title  { font-size: 18px; }
+  .cert-medal   { width: 64px; height: 64px; font-size: 32px; }
+  .cert-pack-name-ar { font-size: 18px; }
 }
 @media (min-height: 700px) {
   .card-body { padding: 28px 24px 24px; }
+}
+
+/* ═════════════════════════════════════════════════════════════ */
+/*           桌面端响应式 DESKTOP RESPONSIVE (≥900px)             */
+/*   产品决策：移动端的纯垂直布局在桌面会过长。桌面切换为双列：     */
+/*   主操作区（句子+麦克风）+ 辅助信息区（声调图+反馈+下一步）     */
+/*   一屏可见所有信息，无需滚动。移动端样式完全不动。              */
+/* ═════════════════════════════════════════════════════════════ */
+@media (min-width: 900px) {
+  body {
+    padding: 24px 24px 24px;
+    align-items: flex-start;        /* 顶部对齐，避免被强制居中导致内容溢出 */
+    overflow-y: auto;
+  }
+
+  /* 整体容器变宽，腾出空间给双列 */
+  .page-wrap {
+    max-width: 880px;
+    gap: 12px;
+  }
+
+  /* 顶部状态栏宽度跟随 */
+  .top-stats { width: 100%; padding: 0 6px; margin-bottom: 4px; }
+
+  /* ── 场景选择：3 列网格，卡片更紧凑 ─────────────────────── */
+  .packs-card { width: 100%; }
+  .packs-header { padding: 28px 24px 16px; }
+  .packs-title { font-size: 22px; }
+  .packs-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 10px 22px 26px;
+  }
+  .pack-tile {
+    min-height: 150px;
+    padding: 16px 14px 14px;
+  }
+  .pack-emoji { font-size: 36px; }
+  .pack-name-ar { font-size: 14.5px; }
+  .pack-name-zh { font-size: 12px; }
+
+  /* ── 练习视图：核心改造 · 双列布局 ──────────────────────── */
+  .view-practice .card {
+    /* 卡片本体变宽 */
+  }
+
+  /* card-body 改为双列网格 */
+  body.in-practice .view-practice .card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    grid-template-areas:
+      "header      header"
+      "progress    progress"
+      "sentence    feedback"
+      "listen      feedback"
+      "mic         feedback"
+      "footer      footer";
+    gap: 14px 28px;
+    padding: 26px 30px 24px;
+    align-items: start;
+  }
+
+  /* 各区域分配 */
+  .view-practice .header        { grid-area: header; margin-bottom: 4px; }
+  .view-practice .progress      { grid-area: progress; margin-bottom: 0; }
+  .view-practice .sentence-box  { grid-area: sentence; margin-bottom: 0; }
+  .view-practice .listen-row    { grid-area: listen;   margin-bottom: 0; }
+  .view-practice .mic-section   { grid-area: mic;      margin-bottom: 0;
+                                  padding-top: 6px; padding-bottom: 6px; }
+  .view-practice .feedback      { grid-area: feedback; margin-bottom: 0;
+                                  display: flex; flex-direction: column; gap: 12px;
+                                  min-height: 100%; align-self: stretch; }
+
+  /* "下一句"按钮放到 footer 区，跨整行 */
+  .view-practice .next-btn {
+    grid-area: footer;
+    margin-top: 8px;
+    max-width: 280px;
+    justify-self: end;
+  }
+
+  /* 句子卡片放大字号，电脑屏看着舒服 */
+  .view-practice .chinese {
+    font-size: 44px;
+    letter-spacing: 4px;
+  }
+  .view-practice .pinyin { font-size: 17px; }
+  .view-practice .arabic-meaning { font-size: 15.5px; }
+
+  /* 右侧反馈区：未触发时不要空着，给个引导占位 */
+  .view-practice .feedback-card {
+    flex: 1;
+    min-height: 280px;
+    /* 默认未触发时显示占位提示 */
+  }
+  /* 右列占位提示：独立 div 控制，由 JS 管理显示/隐藏 */
+  .dt-placeholder {
+    display: flex;
+    text-align: center;
+    min-height: 240px;
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+    background: var(--indigo-xlight);
+    border: 1.5px dashed rgba(99,102,241,.22);
+    border-radius: 18px;
+    padding: 28px 20px;
+    transition: opacity .25s;
+  }
+  .dt-placeholder.hidden { display: none; }
+
+  /* 桌面端的麦克风按钮稍微缩小，因为左列空间有限 */
+  .view-practice .mic-btn { width: 96px; height: 96px; }
+  .view-practice .mic-btn-icon { font-size: 24px; }
+
+  /* 卡片本体的内边距、内阴影优化 */
+  .view-practice .card { padding-bottom: 0; }
+
+  /* 反馈卡片内：电脑端紧凑一些 */
+  .view-practice .fb-score { font-size: 40px; }
+  .view-practice .feedback-card { padding: 16px 18px 16px; }
+
+  /* 声调曲线在桌面端始终展开（节省点击）*/
+  .view-practice .tone-toggle { display: none; }
+  .view-practice .tone-curves {
+    max-height: 130px;
+    margin-top: 12px;
+  }
+
+  /* 返回按钮位置微调 */
+  .view-practice .back-btn {
+    top: 16px; right: 16px;
+    width: 36px; height: 36px;
+  }
+
+  /* TTS 引擎徽章右下角 */
+  .tts-engine-badge { bottom: 16px; left: 16px; font-size: 11px; }
+}
+
+/* ── 更大屏：1280px 以上，再放宽一点，但内容不再继续放大 ───── */
+@media (min-width: 1280px) {
+  .page-wrap { max-width: 960px; }
+  body.in-practice .view-practice .card-body {
+    padding: 30px 38px 26px;
+    gap: 16px 36px;
+  }
+  .view-practice .chinese { font-size: 48px; }
 }
 
 </style>
@@ -568,15 +1567,70 @@ button:focus-visible {
     <span class="brand-name">AI · مدرّب النطق · 发音练习</span>
   </div>
 
+  <!-- Top stats: streak + daily stars -->
+  <div class="top-stats">
+    <div class="streak-pill zero" id="streakPill" title="أيام متتالية">
+      <span class="streak-icon">🔥</span>
+      <span id="streakDays">0</span>
+      <span style="opacity:.75;font-size:10px;letter-spacing:.3px;">DAYS</span>
+    </div>
+    <div class="daily-stars" id="dailyStars" title="هدف اليوم: 3 جمل">
+      <span class="daily-star" data-i="0">⭐</span>
+      <span class="daily-star" data-i="1">⭐</span>
+      <span class="daily-star" data-i="2">⭐</span>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!--             场景包选择视图 PACKS VIEW (default)              -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div class="view-packs" id="viewPacks">
+    <div class="packs-card">
+      <div class="card-stripe"></div>
+      <div class="packs-header">
+        <h2 class="packs-title">اختر موقفاً للتدرّب</h2>
+        <div class="packs-subtitle">Choose a scenario · 选择场景</div>
+      </div>
+      <div class="packs-grid" id="packsGrid"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!--                 练习视图 PRACTICE VIEW                       -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div class="view-practice" id="viewPractice">
+
   <!-- Main card -->
   <div class="card">
     <div class="card-stripe"></div>
+
+    <!-- Back to packs -->
+    <button class="back-btn" onclick="returnToPacks()" aria-label="عودة">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+           stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/>
+        <polyline points="12 19 5 12 12 5"/>
+      </svg>
+    </button>
+
+    <!-- Combo badge -->
+    <div class="combo-badge" id="comboBadge">
+      <span class="combo-fire">🔥</span>
+      <span id="comboNum">×2</span>
+    </div>
+
+    <!-- Combo burst particle layer -->
+    <div class="combo-burst" id="comboBurst"></div>
+
     <div class="card-body">
 
       <!-- Header -->
       <div class="header">
         <h1 class="title">تدرّب على نطق الصينية</h1>
-        <div class="subtitle">Chinese Pronunciation Trainer</div>
+        <div class="current-pack-tag" id="currentPackTag">
+          <span class="current-pack-tag-emoji" id="currentPackEmoji">👋</span>
+          <span id="currentPackName">Greetings</span>
+        </div>
       </div>
 
       <!-- Progress -->
@@ -587,6 +1641,17 @@ button:focus-visible {
         <div class="chinese" id="chinese">你好！</div>
         <div class="pinyin"  id="pinyin">nǐ hǎo</div>
         <div class="arabic-meaning" id="meaning">مرحباً</div>
+
+        <!-- Tone curves toggle -->
+        <button class="tone-toggle" id="toneToggle" onclick="toggleTones()">
+          <span>📈</span>
+          <span>声调图</span>
+          <span class="chev">▼</span>
+        </button>
+        <div class="tone-curves" id="toneCurves">
+          <div class="tone-curves-inner" id="toneCurvesInner"></div>
+        </div>
+
         <div class="hint-row">
           <span class="hint-icon">💡</span>
           <span class="hint-text" id="hintText">
@@ -595,16 +1660,22 @@ button:focus-visible {
         </div>
       </div>
 
-      <!-- Listen button -->
-      <button class="listen-btn" id="listenBtn" onclick="playStandard()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-        </svg>
-        <span id="listenLabel">استمع للنطق الصحيح</span>
-      </button>
+      <!-- Listen + speed row -->
+      <div class="listen-row">
+        <button class="listen-btn" id="listenBtn" onclick="playStandard()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <span id="listenLabel">استمع للنطق الصحيح</span>
+        </button>
+        <button class="speed-btn" id="speedBtn" onclick="toggleSlowMode()"
+                title="بطيء · 慢速">
+          0.6×
+        </button>
+      </div>
 
       <!-- Mic section -->
       <div class="mic-section">
@@ -626,6 +1697,14 @@ button:focus-visible {
 
       <!-- Feedback -->
       <div class="feedback" id="feedback">
+        <!-- 桌面端右列引导占位（移动端不可见，JS 控制显示/隐藏）-->
+        <div class="dt-placeholder" id="dtPlaceholder">
+          🎤&nbsp; انقر الميكروفون وقل الجملة
+          <br>
+          <span style="font-size:11px; opacity:.7; font-family:'Nunito',sans-serif; direction:ltr;">
+            点击麦克风，跟读句子
+          </span>
+        </div>
         <div class="feedback-card" id="feedbackContent">
           <div class="fb-top">
             <span class="fb-score" id="fbScore">86</span>
@@ -643,6 +1722,29 @@ button:focus-visible {
             <span class="fb-tip-icon">💡</span>
             <span class="fb-tip-text" id="fbTipText"></span>
           </div>
+
+          <!-- Retry + share -->
+          <div class="fb-actions">
+            <button class="retry-btn" onclick="retryCurrent()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              <span>حاول مرة أخرى</span>
+            </button>
+            <button class="share-btn hidden" id="shareBtn" onclick="openShare()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="5"  r="3"/>
+                <circle cx="6"  cy="12" r="3"/>
+                <circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              </svg>
+              <span>شارك إنجازك</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -659,7 +1761,122 @@ button:focus-visible {
     </div><!-- /card-body -->
   </div><!-- /card -->
 
+  </div><!-- /view-practice -->
+
 </div><!-- /page-wrap -->
+
+<!-- ═════════════════════════════════════════════════════════════ -->
+<!--                         弹层 OVERLAYS                          -->
+<!-- ═════════════════════════════════════════════════════════════ -->
+
+<!-- 倒计时遮罩 -->
+<div class="countdown-overlay" id="countdownOverlay">
+  <div class="countdown-number" id="countdownNum">3</div>
+</div>
+
+<!-- 每日目标达成弹窗 -->
+<div class="celebrate-overlay" id="celebrateOverlay">
+  <div class="celebrate-card">
+    <div class="celebrate-confetti" id="celebrateConfetti"></div>
+    <div class="celebrate-emoji">🎉</div>
+    <div class="celebrate-title-ar">أحسنت! أنجزت هدف اليوم</div>
+    <div class="celebrate-title-zh">完成今日目标！</div>
+    <div class="celebrate-streak">
+      🔥 <span id="celebrateStreak">1</span> أيام متتالية
+    </div>
+    <button class="celebrate-btn" onclick="closeCelebrate()">
+      تابع التدرّب · 继续练习
+    </button>
+  </div>
+</div>
+
+<!-- 分享卡片弹窗 -->
+<div class="share-overlay" id="shareOverlay">
+  <div class="share-modal">
+    <button class="share-close" onclick="closeShare()" aria-label="إغلاق">✕</button>
+    <div class="share-preview" id="sharePreview">
+      <div class="share-brand">AI · 中文发音练习</div>
+      <div class="share-zh" id="shareZh">你好！</div>
+      <div class="share-py" id="sharePy">nǐ hǎo</div>
+      <div class="share-score-big" id="shareScore">95</div>
+      <div class="share-score-label">PRONUNCIATION SCORE</div>
+      <div class="share-tagline">أتعلّم الصينية يومياً 🇨🇳</div>
+    </div>
+    <div class="share-actions">
+      <button onclick="downloadShare()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>تحميل</span>
+      </button>
+      <button onclick="nativeShare()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+          <polyline points="16 6 12 2 8 6"/>
+          <line x1="12" y1="2" x2="12" y2="15"/>
+        </svg>
+        <span>مشاركة</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<canvas id="shareCanvas" width="800" height="1000"></canvas>
+
+<!-- 场景通关证书 -->
+<div class="cert-overlay" id="certOverlay">
+  <div class="cert-modal">
+    <div class="cert-card">
+      <div class="cert-medal" id="certMedal">🏆</div>
+      <div class="cert-label">CERTIFICATE OF COMPLETION</div>
+      <div class="cert-pack-name-ar" id="certPackAr">المحادثات اليومية</div>
+      <div class="cert-pack-name-zh" id="certPackZh">Daily Greetings</div>
+      <div class="cert-stats">
+        <div class="cert-stat">
+          <div class="cert-stat-num" id="certAvg">88</div>
+          <div class="cert-stat-label">AVG SCORE</div>
+        </div>
+        <div class="cert-stat">
+          <div class="cert-stat-num" id="certBest">96</div>
+          <div class="cert-stat-label">BEST</div>
+        </div>
+        <div class="cert-stat">
+          <div class="cert-stat-num" id="certCount">5</div>
+          <div class="cert-stat-label">SENTENCES</div>
+        </div>
+      </div>
+    </div>
+    <div class="cert-actions">
+      <button onclick="downloadCert()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>تحميل</span>
+      </button>
+      <button class="primary" onclick="closeCert()">
+        <span>متابعة</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 解锁 Toast -->
+<div class="unlock-toast" id="unlockToast">
+  <span class="unlock-toast-icon">🎉</span>
+  <span id="unlockToastText">تم فتح موقف جديد!</span>
+</div>
+
+<!-- TTS 引擎指示徽章（左下角，小而精，开发可见）-->
+<div class="tts-engine-badge" id="ttsEngineBadge" aria-hidden="true">
+  <span class="tts-dot">○</span> TTS · Ready
+</div>
 
 <script>
 
@@ -679,168 +1896,371 @@ button:focus-visible {
   const AZURE_PITCH = "0%";                   // 保持原声
 
   // ═══════════════════════════════════════════════════════════════
-  //  LESSONS — 统一练习内容库（12 条）
-  //
-  //  每条字段：
-  //    zh    : 中文句子（显示 + TTS 朗读）
-  //    py    : 拼音（显示）
-  //    ar    : 阿拉伯语意思
-  //    hint  : { text: 卡片显示（可含<strong>高亮）, spoken: 纯中文口语版供老师朗读 }
-  //    chars : 逐字评分配置 [{ hz, py, tips[] }]
-  //
-  //  新增句子：在末尾添加对象，格式对齐即可。
+  //  新功能配置 · NEW FEATURE FLAGS
   // ═══════════════════════════════════════════════════════════════
-  const LESSONS = [
+  const DAILY_GOAL          = 3;     // 每日目标：完成 3 个高分句子
+  const DAILY_GOAL_MIN_SCORE = 60;   // ≥这个分数才算"完成"一颗星
+  const COMBO_MIN_SCORE     = 75;    // ≥这个分数才能加 combo
+  const COMBO_BREAK_SCORE   = 60;    // <这个分数 combo 归零
+  const SHARE_MIN_SCORE     = 80;    // ≥这个分数才显示分享按钮
+  const COUNTDOWN_MS_PER_STEP = 700; // 倒计时每步时长
+
+  const SLOW_RATE_BROWSER = 0.6;   // 浏览器 TTS 慢速倍数
+  const NORMAL_RATE_BROWSER = 0.85;
+  const SLOW_RATE_AZURE   = "-35%"; // Azure 慢速 SSML rate
+
+  // 慢速模式开关（在 toggleSlowMode 里切换）
+  let _slowMode = false;
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PACKS — 场景包结构
+  //
+  //  每个 pack 字段：
+  //    id            : 内部 id（用于 localStorage 进度持久化）
+  //    nameAr/nameZh : 显示名（双语）
+  //    emoji         : 主题图标
+  //    color         : 主题色 (indigo|rose|amber|green|cyan|purple)
+  //    desc          : 简短说明
+  //    lessons       : 句子数组，结构与原 LESSONS 完全相同
+  //  解锁逻辑：第一个 pack 默认解锁，后续 pack 需要前一个 pack 通关
+  //  (avg >= 70 && 完成所有句子) 解锁
+  // ═══════════════════════════════════════════════════════════════
+  const PACKS = [
     {
-      zh: '你好！', py: 'nǐ hǎo', ar: 'مرحباً!',
-      hint: {
-        text  : '<strong>好 hǎo</strong> 是第三声，声音要先低再上来。',
-        spoken: '好这个字是第三声，声音要先低，再往上扬。'
-      },
-      chars: [
-        { hz: '你', py: 'nǐ',  tips: ['nǐ 是第三声，声音先低再往上。', 'n 的发音，舌尖轻触上齿龈。'] },
-        { hz: '好', py: 'hǎo', tips: ['hǎo 是第三声，像叹气一样，先低沉再上扬。', 'ao 的嘴型，从"啊"自然滑向"哦"。'] },
+      id: 'greetings', nameAr: 'تحيات أساسية', nameZh: '打招呼', emoji: '👋', color: 'indigo',
+      desc: 'Greetings',
+      lessons: [
+        {
+          zh: '你好！', py: 'nǐ hǎo', ar: 'مرحباً!',
+          hint: { text: '<strong>好 hǎo</strong> 是第三声，声音要先低再上来。', spoken: '好这个字是第三声，声音要先低，再往上扬。' },
+          chars: [
+            { hz: '你', py: 'nǐ',  tips: ['nǐ 是第三声，声音先低再往上。', 'n 的发音，舌尖轻触上齿龈。'] },
+            { hz: '好', py: 'hǎo', tips: ['hǎo 是第三声，像叹气一样，先低沉再上扬。', 'ao 的嘴型，从"啊"自然滑向"哦"。'] },
+          ]
+        },
+        {
+          zh: '你好吗？', py: 'nǐ hǎo ma', ar: 'كيف حالك؟',
+          hint: { text: '末尾的 <strong>吗 ma</strong> 读轻声，声音轻轻带过，像句子自然消失。', spoken: '末尾的吗字读轻声，不要用力，让声音轻轻消失就好。' },
+          chars: [
+            { hz: '你', py: 'nǐ',  tips: ['nǐ 第三声，在"好"前会自然变成第二声。', 'n 的发音，舌尖轻触上齿龈。'] },
+            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在连读中可以读半三声。', 'ao 从"啊"滑向"哦"。'] },
+            { hz: '吗', py: 'ma',  tips: ['吗 ma 轻声，不要强调，轻轻带过。', '轻声没有固定调值，跟着句子走就好。'] },
+          ]
+        },
+        {
+          zh: '我很好。', py: 'wǒ hěn hǎo', ar: 'أنا بخير.',
+          hint: { text: '两个第三声连读：<strong>很 hěn</strong> 在前，会自然读成第二声↗。', spoken: '很和好两个第三声连在一起，前面的很会自然变成第二声。' },
+          chars: [
+            { hz: '我', py: 'wǒ',  tips: ['wǒ 第三声，在"很"前面可以读成半三声。', '嘴型圆，气流从嘴唇中间出来。'] },
+            { hz: '很', py: 'hěn', tips: ['hěn 第三声，在"好"前变成第二声，声音往上扬。', '这叫"连读变调"，是自然的普通话节奏。'] },
+            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在句尾读完整的第三声，先低再扬。', '句尾可以稍微强调一下。'] },
+          ]
+        },
+        {
+          zh: '早上好！', py: 'zǎo shang hǎo', ar: 'صباح الخير!',
+          hint: { text: '中间的 <strong>上 shang</strong> 读轻声，<strong>sh</strong> 是翘舌音。', spoken: '上字在这里读轻声，开头的 sh 是翘舌音，舌尖要往上卷。' },
+          chars: [
+            { hz: '早', py: 'zǎo',   tips: ['zǎo 第三声，z 是平舌音，不要卷舌。', 'ao 韵母：从"啊"自然合向"哦"。'] },
+            { hz: '上', py: 'shang', tips: ['shang 轻声，sh 是翘舌音，舌尖往上卷。', 'ang 的鼻韵，声音从鼻腔流出。'] },
+            { hz: '好', py: 'hǎo',   tips: ['好 hǎo 第三声，先低再扬。', '和"你好"里的"好"发音一样。'] },
+          ]
+        },
+        {
+          zh: '再见！', py: 'zài jiàn', ar: 'إلى اللقاء!',
+          hint: { text: '<strong>z</strong> 是平舌音，舌尖不要往上卷，和"zh"不一样。', spoken: '再字的声母 z 是平舌音，舌尖不要往上卷。' },
+          chars: [
+            { hz: '再', py: 'zài',  tips: ['zài 是第四声，声音果断往下。', 'z 是平舌音，舌尖不要卷起来。'] },
+            { hz: '见', py: 'jiàn', tips: ['jiàn 第四声，j 的发音舌面贴上颚。', 'ian 韵母，从"一"过渡到"安"。'] },
+          ]
+        },
       ]
     },
     {
-      zh: '谢谢！', py: 'xiè xie', ar: 'شكراً!',
-      hint: {
-        text  : '<strong>谢 xiè</strong> 是第四声，声音要短而有力地往下落。',
-        spoken: '谢字是第四声，声音从高处果断往下落，要短而有力。'
-      },
-      chars: [
-        { hz: '谢', py: 'xiè', tips: ['xiè 是第四声，声音从高往低落，像点头。', 'x 的气流从舌面吹出，不是"s"。'] },
-        { hz: '谢', py: 'xie', tips: ['第二个"谢"读轻声，像尾音轻轻带过。', '两个字连读，重音在第一个字。'] },
+      id: 'polite', nameAr: 'كلمات اللباقة', nameZh: '礼貌用语', emoji: '🙏', color: 'rose',
+      desc: 'Politeness',
+      lessons: [
+        {
+          zh: '谢谢！', py: 'xiè xie', ar: 'شكراً!',
+          hint: { text: '<strong>谢 xiè</strong> 是第四声，声音要短而有力地往下落。', spoken: '谢字是第四声，声音从高处果断往下落，要短而有力。' },
+          chars: [
+            { hz: '谢', py: 'xiè', tips: ['xiè 是第四声，声音从高往低落，像点头。', 'x 的气流从舌面吹出，不是"s"。'] },
+            { hz: '谢', py: 'xie', tips: ['第二个"谢"读轻声，像尾音轻轻带过。', '两个字连读，重音在第一个字。'] },
+          ]
+        },
+        {
+          zh: '不客气。', py: 'bú kè qi', ar: 'العفو.',
+          hint: { text: '<strong>不 bú</strong> 在第四声前变成第二声，声音要往上扬。', spoken: '不字在第四声前面会变调成第二声，声音往上扬。' },
+          chars: [
+            { hz: '不', py: 'bú', tips: ['bù 在第四声前变成 bú，往上扬。', '这是普通话里"不"的变调规则。'] },
+            { hz: '客', py: 'kè', tips: ['kè 第四声，k 要送气。', 'e 的发音像"呃"。'] },
+            { hz: '气', py: 'qi', tips: ['qi 这里读轻声，轻轻带过。', 'q 要送气，舌面送出。'] },
+          ]
+        },
+        {
+          zh: '对不起！', py: 'duì bu qǐ', ar: 'آسف / عذراً!',
+          hint: { text: '中间的 <strong>不 bu</strong> 连读时变轻声，跟着自然带过就好。', spoken: '不字在中间连读时变成轻声，不需要强调。' },
+          chars: [
+            { hz: '对', py: 'duì', tips: ['duì 第四声，d 不送气，轻轻爆破。', 'ui 韵母，嘴唇先圆后展开。'] },
+            { hz: '不', py: 'bu',  tips: ['在"起"前读轻声，自然带过。', 'b 不送气，比"p"更轻柔。'] },
+            { hz: '起', py: 'qǐ',  tips: ['qǐ 第三声，q 要送气。', 'q 是舌面音，c 是舌尖音。'] },
+          ]
+        },
+        {
+          zh: '没关系！', py: 'méi guān xi', ar: 'لا بأس!',
+          hint: { text: '<strong>没 méi</strong> 是第二声，声音要从低到高。', spoken: '没字是第二声，声音从低处往高走。' },
+          chars: [
+            { hz: '没', py: 'méi',  tips: ['méi 第二声，声调从低到高。', 'ei 韵母：嘴角从"e"拉向"i"。'] },
+            { hz: '关', py: 'guān', tips: ['guān 第一声，平稳不起伏。', 'g 不送气，轻轻爆破。'] },
+            { hz: '系', py: 'xi',   tips: ['xi 在这里读轻声，轻轻带过。', 'x 的气流从舌面吹出。'] },
+          ]
+        },
+        {
+          zh: '请进。', py: 'qǐng jìn', ar: 'تفضّل بالدخول.',
+          hint: { text: '<strong>请 qǐng</strong> 第三声，声音先低再上。', spoken: '请字第三声，声音先低再往上扬。' },
+          chars: [
+            { hz: '请', py: 'qǐng', tips: ['qǐng 第三声，先低再扬。', 'ing 的鼻韵母，舌根抵上颚。'] },
+            { hz: '进', py: 'jìn',  tips: ['jìn 第四声，往下落。', 'j 舌面贴上颚。'] },
+          ]
+        },
       ]
     },
     {
-      zh: '再见！', py: 'zài jiàn', ar: 'إلى اللقاء!',
-      hint: {
-        text  : '<strong>z</strong> 是平舌音，舌尖不要往上卷，和"zh"不一样。',
-        spoken: '再字的声母 z 是平舌音，舌尖不要往上卷，和 zh 不一样。'
-      },
-      chars: [
-        { hz: '再', py: 'zài',  tips: ['zài 是第四声，声音果断往下。', 'z 是平舌音，舌尖不要卷起来。'] },
-        { hz: '见', py: 'jiàn', tips: ['jiàn 第四声，j 的发音舌面贴上颚。', 'ian 韵母，从"一"过渡到"安"。'] },
+      id: 'self', nameAr: 'تعريف عن النفس', nameZh: '介绍自己', emoji: '👤', color: 'amber',
+      desc: 'About me',
+      lessons: [
+        {
+          zh: '我是学生。', py: 'wǒ shì xuésheng', ar: 'أنا طالب.',
+          hint: { text: '<strong>是 shì</strong> 是翘舌音 + 第四声，要果断往下。', spoken: '是字是翘舌音，第四声要果断往下落。' },
+          chars: [
+            { hz: '我', py: 'wǒ',     tips: ['wǒ 第三声，嘴型圆。', '句首可以读成半三声。'] },
+            { hz: '是', py: 'shì',    tips: ['shì 第四声 + 翘舌。', '舌尖往上卷，气流从舌面送出。'] },
+            { hz: '学', py: 'xué',    tips: ['xué 第二声，往上扬。', 'x 是舌面音。'] },
+            { hz: '生', py: 'sheng',  tips: ['sheng 在这里读轻声。', 'sh 翘舌，ng 鼻音收尾。'] },
+          ]
+        },
+        {
+          zh: '我叫…', py: 'wǒ jiào …', ar: 'اسمي …',
+          hint: { text: '<strong>叫 jiào</strong> 第四声，声音从高往低果断落下。', spoken: '叫字第四声，声音从高处果断落下。' },
+          chars: [
+            { hz: '我', py: 'wǒ',   tips: ['wǒ 第三声，嘴型圆。', '半三声开口。'] },
+            { hz: '叫', py: 'jiào', tips: ['jiào 第四声，从高往低。', 'iao 三合元音，从 i 滑向 a 再到 o。'] },
+          ]
+        },
+        {
+          zh: '我爱中文。', py: 'wǒ ài Zhōngwén', ar: 'أنا أحب اللغة الصينية.',
+          hint: { text: '<strong>中 zhōng</strong> 是第一声，声音要平稳，不要起伏。', spoken: '中字是第一声，声音要保持平稳。' },
+          chars: [
+            { hz: '我', py: 'wǒ',    tips: ['wǒ 第三声，嘴型圆。', '半三声开口。'] },
+            { hz: '爱', py: 'ài',    tips: ['ài 第四声，从高降下来。', 'ai 从"啊"滑向"i"。'] },
+            { hz: '中', py: 'zhōng', tips: ['zhōng 第一声，平稳。', 'zh 翘舌音。'] },
+            { hz: '文', py: 'wén',   tips: ['wén 第二声，往上走。', 'en 鼻韵母。'] },
+          ]
+        },
+        {
+          zh: '我在学习中文。', py: 'wǒ zài xuéxí Zhōngwén', ar: 'أنا أتعلم اللغة الصينية.',
+          hint: { text: '<strong>学 xué</strong> 是第二声，声音要从中间往上扬。', spoken: '学字第二声，声音要从中间位置往上扬。' },
+          chars: [
+            { hz: '我', py: 'wǒ',    tips: ['wǒ 半三声，嘴型圆。', '句首开口。'] },
+            { hz: '在', py: 'zài',   tips: ['zài 第四声。', 'z 平舌。'] },
+            { hz: '学', py: 'xué',   tips: ['xué 第二声，往上扬。', 'x 舌面音。'] },
+            { hz: '习', py: 'xí',    tips: ['xí 第二声，连读稍轻。', 'i 嘴角向两侧。'] },
+            { hz: '中', py: 'zhōng', tips: ['zhōng 第一声平稳。', 'zh 翘舌。'] },
+            { hz: '文', py: 'wén',   tips: ['wén 第二声往上。', 'en 鼻韵母。'] },
+          ]
+        },
+        {
+          zh: '认识你很高兴。', py: 'rènshi nǐ hěn gāoxìng', ar: 'تشرفت بمعرفتك.',
+          hint: { text: '<strong>认 rèn</strong> 是翘舌音，舌尖卷起来。', spoken: '认字是翘舌音，舌尖往上卷。' },
+          chars: [
+            { hz: '认', py: 'rèn',   tips: ['rèn 第四声 + 翘舌。', 'r 舌尖卷起，气流摩擦。'] },
+            { hz: '识', py: 'shi',   tips: ['shi 轻声 + 翘舌。', 'sh 舌尖往上。'] },
+            { hz: '你', py: 'nǐ',    tips: ['nǐ 第三声。', '舌尖触上齿龈。'] },
+            { hz: '很', py: 'hěn',   tips: ['hěn 第三声。', '在"高"前可以读半三声。'] },
+            { hz: '高', py: 'gāo',   tips: ['gāo 第一声平稳。', 'g 不送气。'] },
+            { hz: '兴', py: 'xìng',  tips: ['xìng 第四声。', 'ing 鼻韵母。'] },
+          ]
+        },
       ]
     },
     {
-      zh: '对不起！', py: 'duì bu qǐ', ar: 'آسف / عذراً!',
-      hint: {
-        text  : '中间的 <strong>不 bu</strong> 连读时变轻声，跟着自然带过就好。',
-        spoken: '不这个字在中间连读时变成轻声，不需要单独强调，跟着自然带过就好。'
-      },
-      chars: [
-        { hz: '对', py: 'duì', tips: ['duì 第四声，d 不送气，轻轻爆破。', 'ui 韵母，嘴唇先圆后展开。'] },
-        { hz: '不', py: 'bu',  tips: ['在"起"前读轻声，自然带过，不要强调。', 'b 不送气，比"p"更轻柔。'] },
-        { hz: '起', py: 'qǐ',  tips: ['qǐ 第三声，q 要送气，像吹一口气出来。', 'q 是舌面音，c 是舌尖音，不一样。'] },
+      id: 'restaurant', nameAr: 'في المطعم', nameZh: '在餐厅', emoji: '🍜', color: 'green',
+      desc: 'At the restaurant',
+      lessons: [
+        {
+          zh: '我想喝水。', py: 'wǒ xiǎng hē shuǐ', ar: 'أريد أن أشرب الماء.',
+          hint: { text: '<strong>水 shuǐ</strong> 是第三声，<strong>sh</strong> 要翘舌。', spoken: '水字第三声，开头的 sh 要翘舌。' },
+          chars: [
+            { hz: '我', py: 'wǒ',    tips: ['wǒ 半三声。', '嘴型圆。'] },
+            { hz: '想', py: 'xiǎng', tips: ['xiǎng 第三声，x 舌面音。', 'iang 鼻音收尾。'] },
+            { hz: '喝', py: 'hē',    tips: ['hē 第一声，平稳。', 'h 从喉咙送气。'] },
+            { hz: '水', py: 'shuǐ',  tips: ['shuǐ 第三声，sh 翘舌。', 'ui 嘴唇先圆后展。'] },
+          ]
+        },
+        {
+          zh: '请给我菜单。', py: 'qǐng gěi wǒ càidān', ar: 'القائمة من فضلك.',
+          hint: { text: '<strong>请 qǐng</strong> + <strong>给 gěi</strong> 都是第三声，前一个变第二声。', spoken: '请和给都是第三声，前面的请会变成第二声。' },
+          chars: [
+            { hz: '请', py: 'qǐng', tips: ['qǐng 在"给"前变第二声。', '舌面音。'] },
+            { hz: '给', py: 'gěi',  tips: ['gěi 第三声。', 'g 不送气。'] },
+            { hz: '我', py: 'wǒ',   tips: ['wǒ 半三声。', '嘴型圆。'] },
+            { hz: '菜', py: 'cài',  tips: ['cài 第四声 + 平舌。', 'c 送气，舌尖抵上齿背。'] },
+            { hz: '单', py: 'dān',  tips: ['dān 第一声。', 'an 鼻韵母。'] },
+          ]
+        },
+        {
+          zh: '多少钱？', py: 'duōshao qián', ar: 'كم السعر؟',
+          hint: { text: '<strong>少 shao</strong> 这里读轻声，<strong>钱 qián</strong> 第二声往上。', spoken: '少字读轻声，钱字第二声往上扬。' },
+          chars: [
+            { hz: '多', py: 'duō',  tips: ['duō 第一声平稳。', 'd 不送气。'] },
+            { hz: '少', py: 'shao', tips: ['这里读轻声。', 'sh 翘舌。'] },
+            { hz: '钱', py: 'qián', tips: ['qián 第二声往上。', 'q 送气。'] },
+          ]
+        },
+        {
+          zh: '很好吃！', py: 'hěn hǎo chī', ar: 'لذيذ جداً!',
+          hint: { text: '<strong>吃 chī</strong> 是翘舌 + 第一声，声音平稳。', spoken: '吃字是翘舌音，第一声要平稳。' },
+          chars: [
+            { hz: '很', py: 'hěn', tips: ['hěn 在"好"前变第二声。', '连读变调。'] },
+            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声。', 'ao 从"啊"滑"哦"。'] },
+            { hz: '吃', py: 'chī', tips: ['chī 第一声 + 翘舌。', 'ch 舌尖往上卷。'] },
+          ]
+        },
+        {
+          zh: '我吃饱了。', py: 'wǒ chī bǎo le', ar: 'لقد شبعت.',
+          hint: { text: '末尾的 <strong>了 le</strong> 读轻声，表示状态变化。', spoken: '了字读轻声，表示已经发生。' },
+          chars: [
+            { hz: '我', py: 'wǒ',  tips: ['wǒ 半三声。', '嘴型圆。'] },
+            { hz: '吃', py: 'chī', tips: ['chī 翘舌第一声。', 'ch 舌尖往上。'] },
+            { hz: '饱', py: 'bǎo', tips: ['bǎo 第三声。', 'b 不送气。'] },
+            { hz: '了', py: 'le',  tips: ['le 轻声，语气助词。', '轻轻带过。'] },
+          ]
+        },
       ]
     },
     {
-      zh: '我爱中文。', py: 'wǒ ài Zhōngwén', ar: 'أنا أحب اللغة الصينية.',
-      hint: {
-        text  : '<strong>中 zhōng</strong> 是第一声，声音要平稳，不要起伏。',
-        spoken: '中字是第一声，声音要保持平稳，像唱歌一样，不要忽高忽低。'
-      },
-      chars: [
-        { hz: '我', py: 'wǒ',    tips: ['wǒ 第三声，嘴型圆，像"哦"加 w。', '第三声在句中可以读成半三声。'] },
-        { hz: '爱', py: 'ài',    tips: ['ài 第四声，声音从高降下来，像叹气。', 'ai 从"啊"自然滑向"i"。'] },
-        { hz: '中', py: 'zhōng', tips: ['zhōng 第一声，声音平稳，不要起伏。', 'zh 是翘舌音，舌尖往上卷。'] },
-        { hz: '文', py: 'wén',   tips: ['wén 第二声，声音从低往高走。', 'en 鼻韵母，带鼻音收尾。'] },
+      id: 'shopping', nameAr: 'التسوّق', nameZh: '购物', emoji: '🛍️', color: 'cyan',
+      desc: 'Shopping',
+      lessons: [
+        {
+          zh: '这个多少钱？', py: 'zhège duōshao qián', ar: 'بكم هذا؟',
+          hint: { text: '<strong>这 zhè</strong> 是翘舌 + 第四声。', spoken: '这字翘舌音，第四声往下落。' },
+          chars: [
+            { hz: '这', py: 'zhè',  tips: ['zhè 翘舌 + 第四声。', 'zh 舌尖卷。'] },
+            { hz: '个', py: 'ge',   tips: ['ge 轻声。', '量词，轻轻带过。'] },
+            { hz: '多', py: 'duō',  tips: ['duō 第一声。', 'd 不送气。'] },
+            { hz: '少', py: 'shao', tips: ['shao 轻声 + 翘舌。', 'sh 舌尖往上。'] },
+            { hz: '钱', py: 'qián', tips: ['qián 第二声。', 'q 送气。'] },
+          ]
+        },
+        {
+          zh: '太贵了。', py: 'tài guì le', ar: 'غالٍ جداً.',
+          hint: { text: '<strong>太 tài</strong> + <strong>贵 guì</strong> 都是第四声，要果断有力。', spoken: '太和贵都是第四声，要果断往下。' },
+          chars: [
+            { hz: '太', py: 'tài', tips: ['tài 第四声 + 送气。', 't 比 d 更强。'] },
+            { hz: '贵', py: 'guì', tips: ['guì 第四声。', 'ui 嘴唇先圆后展。'] },
+            { hz: '了', py: 'le',  tips: ['le 轻声，语气助词。', '轻轻带过。'] },
+          ]
+        },
+        {
+          zh: '便宜一点。', py: 'piányi yìdiǎn', ar: 'أرخص قليلاً.',
+          hint: { text: '<strong>一 yì</strong> 在第三声前读第二声，连读变调。', spoken: '一字在第三声前变成第二声。' },
+          chars: [
+            { hz: '便', py: 'pián',  tips: ['pián 第二声 + 送气。', 'p 比 b 更强。'] },
+            { hz: '宜', py: 'yi',    tips: ['yi 轻声。', '轻轻带过。'] },
+            { hz: '一', py: 'yì',    tips: ['一在第三声前变第二声。', '变调规则。'] },
+            { hz: '点', py: 'diǎn',  tips: ['diǎn 第三声。', 'ian 嘴型从"一"到"安"。'] },
+          ]
+        },
+        {
+          zh: '我要买这个。', py: 'wǒ yào mǎi zhège', ar: 'أريد شراء هذا.',
+          hint: { text: '<strong>买 mǎi</strong> 是第三声，声音先低再上。', spoken: '买字第三声，先低再上扬。' },
+          chars: [
+            { hz: '我', py: 'wǒ',   tips: ['wǒ 半三声。', '嘴型圆。'] },
+            { hz: '要', py: 'yào',  tips: ['yào 第四声。', '从高往下。'] },
+            { hz: '买', py: 'mǎi',  tips: ['mǎi 第三声。', 'ai 从"啊"到"i"。'] },
+            { hz: '这', py: 'zhè',  tips: ['zhè 翘舌 + 第四声。', 'zh 舌尖卷。'] },
+            { hz: '个', py: 'ge',   tips: ['ge 轻声。', '量词。'] },
+          ]
+        },
+        {
+          zh: '可以刷卡吗？', py: 'kěyǐ shuākǎ ma', ar: 'هل أستطيع الدفع بالبطاقة؟',
+          hint: { text: '<strong>刷 shuā</strong> 是翘舌 + 第一声。', spoken: '刷字翘舌音，第一声要平稳。' },
+          chars: [
+            { hz: '可', py: 'kě',   tips: ['kě 第三声。', 'k 送气。'] },
+            { hz: '以', py: 'yǐ',   tips: ['yǐ 第三声。', '嘴角向两侧。'] },
+            { hz: '刷', py: 'shuā', tips: ['shuā 第一声 + 翘舌。', 'sh 舌尖往上。'] },
+            { hz: '卡', py: 'kǎ',   tips: ['kǎ 第三声。', 'k 送气。'] },
+            { hz: '吗', py: 'ma',   tips: ['ma 轻声，疑问语气。', '轻轻带过。'] },
+          ]
+        },
       ]
     },
     {
-      zh: '我在学习中文。', py: 'wǒ zài xuéxí Zhōngwén', ar: 'أنا أتعلم اللغة الصينية.',
-      hint: {
-        text  : '<strong>学 xué</strong> 是第二声，声音要从中间往上扬，像问句的语气。',
-        spoken: '学字是第二声，声音要从中间位置往上扬，像你在疑问时的语气。'
-      },
-      chars: [
-        { hz: '我', py: 'wǒ',    tips: ['wǒ 第三声，在句子开头可以读成半三声。', '嘴型圆，像"哦"加 w。'] },
-        { hz: '在', py: 'zài',   tips: ['zài 第四声，果断往下。', 'z 是平舌音。'] },
-        { hz: '学', py: 'xué',   tips: ['xué 第二声，声音往上扬。', 'x 气流从舌面吹出，不是"s"。'] },
-        { hz: '习', py: 'xí',    tips: ['xí 第二声，和"学"连读稍微轻一点。', 'i 的发音，嘴角稍微向两侧拉。'] },
-        { hz: '中', py: 'zhōng', tips: ['zhōng 第一声，平稳。', 'zh 翘舌音。'] },
-        { hz: '文', py: 'wén',   tips: ['wén 第二声，往上扬。', '鼻韵母 en，带鼻音收尾。'] },
-      ]
-    },
-    {
-      zh: '今天天气很好。', py: 'jīn tiān tiān qì hěn hǎo', ar: 'الطقس جميل اليوم.',
-      hint: {
-        text  : '<strong>很 hěn</strong> 和 <strong>好 hǎo</strong> 都是第三声，连读时前面那个会自然变成第二声。',
-        spoken: '很和好都是第三声，两个第三声连在一起，前面的很会自然变得像第二声，这是正常的。'
-      },
-      chars: [
-        { hz: '今', py: 'jīn',  tips: ['jīn 第一声，平稳不起伏。', 'j 的发音，舌面抵上颚。'] },
-        { hz: '天', py: 'tiān', tips: ['tiān 第一声，平稳。', 'ian 韵母，从"一"过渡到"安"。'] },
-        { hz: '天', py: 'tiān', tips: ['第二个"天"在连读中会稍微轻一点。', '两个相同字连读，后面的可以轻声带过。'] },
-        { hz: '气', py: 'qì',   tips: ['qì 第四声，往下落。', 'q 要送气，像轻吹气。'] },
-        { hz: '很', py: 'hěn',  tips: ['hěn 第三声，在"好"前面会变成第二声。', '这是自然的变调，不用担心。'] },
-        { hz: '好', py: 'hǎo',  tips: ['hǎo 第三声，声音先低再上扬。', '在句尾可以读完整的第三声。'] },
-      ]
-    },
-    {
-      zh: '我想喝水。', py: 'wǒ xiǎng hē shuǐ', ar: 'أريد أن أشرب الماء.',
-      hint: {
-        text  : '<strong>水 shuǐ</strong> 是第三声，<strong>sh</strong> 要翘舌，舌尖往上卷。',
-        spoken: '水字是第三声，开头的 sh 要翘舌，舌尖往上卷，然后声音先低再往上扬。'
-      },
-      chars: [
-        { hz: '我', py: 'wǒ',    tips: ['wǒ 第三声，嘴型圆。', '在句中可以读成半三声。'] },
-        { hz: '想', py: 'xiǎng', tips: ['xiǎng 第三声，x 气流从舌面吹出。', 'iang 韵母，鼻音收尾。'] },
-        { hz: '喝', py: 'hē',    tips: ['hē 第一声，平稳，不起伏。', 'h 的发音，从喉咙送气。'] },
-        { hz: '水', py: 'shuǐ',  tips: ['shuǐ 第三声，sh 要翘舌，舌尖往上卷。', 'ui 韵母，嘴唇先圆后展。'] },
-      ]
-    },
-    {
-      zh: '你好吗？', py: 'nǐ hǎo ma', ar: 'كيف حالك؟',
-      hint: {
-        text  : '末尾的 <strong>吗 ma</strong> 读轻声，声音轻轻带过，像句子自然消失。',
-        spoken: '末尾的吗字读轻声，不要用力，让声音轻轻消失就好，这样语气才自然。'
-      },
-      chars: [
-        { hz: '你', py: 'nǐ',  tips: ['nǐ 第三声，在"好"前会自然变成第二声。', 'n 的发音，舌尖轻触上齿龈。'] },
-        { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在连读中可以读半三声。', 'ao 从"啊"滑向"哦"。'] },
-        { hz: '吗', py: 'ma',  tips: ['吗 ma 轻声，不要强调，轻轻带过。', '轻声没有固定调值，跟着句子走就好。'] },
-      ]
-    },
-    {
-      zh: '我很好。', py: 'wǒ hěn hǎo', ar: 'أنا بخير.',
-      hint: {
-        text  : '两个第三声连读：<strong>很 hěn</strong> 在前，会自然读成第二声↗。',
-        spoken: '很和好两个第三声连在一起，前面的很会自然变成第二声，声音往上走，这是普通话里的自然变调。'
-      },
-      chars: [
-        { hz: '我', py: 'wǒ',  tips: ['wǒ 第三声，在"很"前面可以读成半三声。', '嘴型圆，气流从嘴唇中间出来。'] },
-        { hz: '很', py: 'hěn', tips: ['hěn 第三声，在"好"前变成第二声，声音往上扬。', '这叫"连读变调"，是自然的普通话节奏。'] },
-        { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在句尾读完整的第三声，先低再扬。', '句尾可以稍微强调一下。'] },
-      ]
-    },
-    {
-      zh: '早上好！', py: 'zǎo shang hǎo', ar: 'صباح الخير!',
-      hint: {
-        text  : '中间的 <strong>上 shang</strong> 读轻声，<strong>sh</strong> 是翘舌音。',
-        spoken: '上字在这里读轻声，而且开头的 sh 是翘舌音，舌尖要往上卷，和 s 不一样。'
-      },
-      chars: [
-        { hz: '早', py: 'zǎo',   tips: ['zǎo 第三声，z 是平舌音，不要卷舌。', 'ao 韵母：从"啊"自然合向"哦"。'] },
-        { hz: '上', py: 'shang', tips: ['shang 轻声，sh 是翘舌音，舌尖往上卷。', 'ang 的鼻韵，声音从鼻腔流出。'] },
-        { hz: '好', py: 'hǎo',   tips: ['好 hǎo 第三声，先低再扬。', '和"你好"里的"好"发音一样。'] },
-      ]
-    },
-    {
-      zh: '没关系！', py: 'méi guān xi', ar: 'لا بأس!',
-      hint: {
-        text  : '<strong>没 méi</strong> 是第二声，声音要从低到高，像你在轻松地回答别人。',
-        spoken: '没字是第二声，声音要从低处往高走，像你在轻松地回答别人。'
-      },
-      chars: [
-        { hz: '没', py: 'méi',  tips: ['méi 第二声，声调从低到高。', 'ei 韵母：嘴角从"e"拉向"i"。'] },
-        { hz: '关', py: 'guān', tips: ['guān 第一声，平稳不起伏。', 'g 不送气，轻轻爆破。'] },
-        { hz: '系', py: 'xi',   tips: ['xi 在这里读轻声，轻轻带过。', 'x 的气流从舌面吹出，感受送气。'] },
+      id: 'numbers', nameAr: 'الأرقام والوقت', nameZh: '数字时间', emoji: '🔢', color: 'purple',
+      desc: 'Numbers & time',
+      lessons: [
+        {
+          zh: '一二三。', py: 'yī èr sān', ar: 'واحد، اثنان، ثلاثة.',
+          hint: { text: '<strong>一 yī</strong> 单独说是第一声，连读时常变调。', spoken: '一字单独读是第一声，连读时会变调。' },
+          chars: [
+            { hz: '一', py: 'yī',  tips: ['yī 第一声，平稳。', '单独读不变调。'] },
+            { hz: '二', py: 'èr',  tips: ['èr 第四声 + 卷舌。', 'er 舌尖卷起。'] },
+            { hz: '三', py: 'sān', tips: ['sān 第一声 + 平舌。', 's 舌尖抵下齿。'] },
+          ]
+        },
+        {
+          zh: '现在几点？', py: 'xiànzài jǐ diǎn', ar: 'كم الساعة الآن؟',
+          hint: { text: '<strong>几 jǐ</strong> + <strong>点 diǎn</strong> 都是第三声，前一个变第二声。', spoken: '几和点都是第三声，前面的几变成第二声。' },
+          chars: [
+            { hz: '现', py: 'xiàn', tips: ['xiàn 第四声。', 'x 舌面音。'] },
+            { hz: '在', py: 'zài',  tips: ['zài 第四声 + 平舌。', 'z 舌尖抵下齿。'] },
+            { hz: '几', py: 'jǐ',   tips: ['jǐ 在"点"前变第二声。', '连读变调。'] },
+            { hz: '点', py: 'diǎn', tips: ['diǎn 第三声。', 'ian 从"一"到"安"。'] },
+          ]
+        },
+        {
+          zh: '今天天气很好。', py: 'jīn tiān tiān qì hěn hǎo', ar: 'الطقس جميل اليوم.',
+          hint: { text: '<strong>很 hěn</strong> + <strong>好 hǎo</strong> 都是第三声，连读时前面变第二声。', spoken: '很和好都是第三声，前面的很会变成第二声。' },
+          chars: [
+            { hz: '今', py: 'jīn',  tips: ['jīn 第一声。', 'j 舌面贴上颚。'] },
+            { hz: '天', py: 'tiān', tips: ['tiān 第一声。', 'ian 从"一"到"安"。'] },
+            { hz: '天', py: 'tiān', tips: ['第二个"天"在连读中稍轻。', '相同字连读后字可轻。'] },
+            { hz: '气', py: 'qì',   tips: ['qì 第四声。', 'q 送气。'] },
+            { hz: '很', py: 'hěn',  tips: ['hěn 在"好"前变第二声。', '自然变调。'] },
+            { hz: '好', py: 'hǎo',  tips: ['hǎo 第三声。', '句尾完整。'] },
+          ]
+        },
+        {
+          zh: '明天见。', py: 'míngtiān jiàn', ar: 'إلى الغد.',
+          hint: { text: '<strong>明 míng</strong> 是第二声，声音从低往高。', spoken: '明字第二声，声音从低往高走。' },
+          chars: [
+            { hz: '明', py: 'míng', tips: ['míng 第二声。', 'ing 鼻韵母。'] },
+            { hz: '天', py: 'tiān', tips: ['tiān 第一声平稳。', 'ian 嘴型。'] },
+            { hz: '见', py: 'jiàn', tips: ['jiàn 第四声。', 'j 舌面音。'] },
+          ]
+        },
+        {
+          zh: '我九点起床。', py: 'wǒ jiǔ diǎn qǐchuáng', ar: 'أستيقظ الساعة التاسعة.',
+          hint: { text: '<strong>九 jiǔ</strong> + <strong>点 diǎn</strong> 第三声连读，前一个变第二声。', spoken: '九和点都是第三声，连起来时前面的九变成第二声。' },
+          chars: [
+            { hz: '我', py: 'wǒ',     tips: ['wǒ 半三声。', '嘴型圆。'] },
+            { hz: '九', py: 'jiǔ',    tips: ['jiǔ 在"点"前变第二声。', 'iu 嘴型从"i"到"u"。'] },
+            { hz: '点', py: 'diǎn',   tips: ['diǎn 第三声。', 'ian 嘴型。'] },
+            { hz: '起', py: 'qǐ',     tips: ['qǐ 第三声 + 送气。', 'q 舌面音。'] },
+            { hz: '床', py: 'chuáng', tips: ['chuáng 第二声 + 翘舌。', 'ch 舌尖卷。'] },
+          ]
+        },
       ]
     },
   ];
+
+  // 当前活动的 pack id（启动时为 null = 在场景选择页）
+  let currentPackId = null;
+
+  // 当前 pack 的 lessons 数组（练习时指向 PACKS 中某个的 lessons）
+  // 为了兼容旧代码，保留全局变量名 LESSONS
+  let LESSONS = PACKS[0].lessons;
+
 
   // ═══════════════════════════════════════════════════════════════
   //  Azure Neural TTS
@@ -902,55 +2322,131 @@ button:focus-visible {
 
 
   // ═══════════════════════════════════════════════════════════════
-  //  语音引擎 — 统一入口 ttsSpeak()
-  //  策略：Azure Neural TTS (如填了 key) → 浏览器 speechSynthesis fallback
+  //  🎙️  语音引擎 v2 — 三层架构 · 跨平台健壮
   //
-  //  常见无声问题已修复：
-  //    1. Chrome / iOS 需要"用户手势解锁"后才能播放 → 首次任意点击解锁
-  //    2. iOS Safari 在 voices 为空时不会触发 onvoiceschanged
-  //       → 不再阻塞等待 voice 列表，直接 speak（系统会按 lang 挑声）
-  //    3. Chrome 长句被自动暂停 → resumeTimer 持续 resume
-  //    4. 原 speakChinese() 没有走 Azure 分支，等于配置完全失效 → 已修
-  //    5. 加上详细 console 日志，便于排查"无声"到底卡在哪一步
+  //  Layer 1: Azure Neural TTS (若填了 key)
+  //           - 最佳音质，专业老师风格 (XiaoxiaoNeural / friendly)
+  //           - 任何设备都一致，但要求填 key 且联网
+  //
+  //  Layer 2: 浏览器 SpeechSynthesis (默认主力)
+  //           - 智能等待 voice 列表加载，按质量打分选最佳
+  //           - macOS: Ting-Ting / iOS: Tian-Tian
+  //           - Windows: Google 普通话 (网络) > Microsoft Huihui
+  //           - Android: Google 普通话
+  //           - 处理 Chrome 长句暂停、iOS 解锁等浏览器特性
+  //
+  //  Layer 3: 公开 TTS 代理兜底
+  //           - 适用于 Linux/Chromebook/嵌入式 WebView 等无中文语音的环境
+  //           - 用 Google Translate TTS endpoint（事实标准，业界广泛使用）
+  //           - 把句子分段 (≤200 chars/seg)，串行播放
+  //           - 永远保证用户能听到声音
+  //
+  //  调试：右下角 TTS 引擎徽章实时显示当前引擎，便于排查
   // ═══════════════════════════════════════════════════════════════
 
   const _hasAzure = !!(AZURE_SPEECH_KEY && AZURE_REGION);
 
-  let _zhVoice     = null;
-  let _resumeTimer = null;
-  let _ttsUnlocked = false;
+  // TTS 引擎状态
+  const TTS_ENGINE = {
+    AZURE   : 'azure',
+    BROWSER : 'browser',
+    PROXY   : 'proxy',
+    NONE    : 'none',
+  };
+  let _currentEngine = TTS_ENGINE.NONE;     // 实际播放时用的引擎（每次切换都会更新徽章）
+  let _zhVoice       = null;                // 选中的浏览器 voice 对象
+  let _zhVoiceScore  = 0;                   // 该 voice 的质量评分
+  let _voicesReadyPromise = null;           // 等待 voice 列表加载的 Promise
+  let _resumeTimer   = null;                // Chrome 长句 keep-alive 定时器
+  let _ttsUnlocked   = false;               // iOS/Chrome 是否已用户手势解锁
+  let _proxyAudioEl  = null;                // 代理 TTS 用的 HTMLAudioElement
+  let _proxyAborted  = false;               // 用于打断代理 TTS
 
-  function _pickZhVoice() {
-    if (!window.speechSynthesis) return null;
-    const all = window.speechSynthesis.getVoices();
-    if (!all.length) return null;
-    return (
-      all.find(v => /xiaoxiao/i.test(v.name))                          ||
-      all.find(v => /ting.?ting|meijia|sinji|yating/i.test(v.name))    ||
-      all.find(v => v.localService && v.lang === 'zh-CN')              ||
-      all.find(v => v.lang === 'zh-CN')                                ||
-      all.find(v => v.lang && v.lang.toLowerCase().startsWith('zh'))   ||
-      null
-    );
+  // ── 浏览器 voice 选择：按质量打分 ──────────────────────────────
+  // 不同名字代表不同质量，给个分数让系统选最好的
+  function _scoreVoice(v) {
+    if (!v || !v.lang) return -1;
+    const lang = v.lang.toLowerCase();
+    // 必须是中文
+    if (!lang.startsWith('zh')) return -1;
+    let s = 0;
+    // 普通话最优先
+    if (lang === 'zh-cn' || lang === 'zh_cn' || lang === 'cmn-cn') s += 100;
+    else if (lang.startsWith('zh-cn') || lang.startsWith('cmn'))   s += 80;
+    else if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk')) s += 30; // 台/粤腔可凑合
+    else                                                            s += 10;
+
+    const name = (v.name || '').toLowerCase();
+    // 已知优质语音加分
+    if (/xiaoxiao|xiaoyi|yunxi|yunyang/.test(name)) s += 50; // Azure Neural 系列
+    if (/google/.test(name))                         s += 40; // Google 普通话（云端，音质佳）
+    if (/tingting|ting-ting|tian|sinji|meijia|yating/.test(name)) s += 30; // Apple 系列
+    if (/huihui|kangkang|yaoyao/.test(name))         s += 20; // 微软经典本地语音
+    // 本地语音稍微加分（不需联网，稳定）
+    if (v.localService) s += 5;
+    return s;
   }
 
-  function _refreshVoice() {
-    _zhVoice = _pickZhVoice();
-    if (_zhVoice) {
-      console.log('[TTS] 已选中文语音:', _zhVoice.name, _zhVoice.lang);
-    } else if (window.speechSynthesis) {
-      const n = window.speechSynthesis.getVoices().length;
-      console.warn('[TTS] 未找到中文语音 (voices=' + n + ')，将用 lang=zh-CN 让系统自选');
+  function _pickBestZhVoice() {
+    if (!window.speechSynthesis) return { voice: null, score: -1 };
+    const all = window.speechSynthesis.getVoices() || [];
+    if (!all.length) return { voice: null, score: -1 };
+    let best = null, bestScore = -1;
+    for (const v of all) {
+      const sc = _scoreVoice(v);
+      if (sc > bestScore) { best = v; bestScore = sc; }
     }
+    return { voice: best, score: bestScore };
   }
 
-  if (window.speechSynthesis) {
-    window.speechSynthesis.onvoiceschanged = _refreshVoice;
-    _refreshVoice();
-  } else {
-    console.warn('[TTS] 浏览器不支持 speechSynthesis');
+  // 等待 voice 列表加载（异步、跨浏览器都能用）
+  // - macOS Safari: 立刻就有
+  // - Chrome desktop: 第一次空，触发 onvoiceschanged 后才有
+  // - iOS Safari: 可能要等用户手势后才填充
+  // - Linux/嵌入式: 可能永远是空
+  function _waitForVoices(timeoutMs) {
+    if (_voicesReadyPromise) return _voicesReadyPromise;
+    _voicesReadyPromise = new Promise(resolve => {
+      if (!window.speechSynthesis) { resolve([]); return; }
+      // 先看看是否已经有了
+      const first = window.speechSynthesis.getVoices();
+      if (first && first.length) { resolve(first); return; }
+      let done = false;
+      const finish = (list) => {
+        if (done) return; done = true;
+        resolve(list || []);
+      };
+      // 监听 onvoiceschanged
+      const handler = () => {
+        const list = window.speechSynthesis.getVoices() || [];
+        if (list.length) finish(list);
+      };
+      window.speechSynthesis.addEventListener
+        ? window.speechSynthesis.addEventListener('voiceschanged', handler)
+        : (window.speechSynthesis.onvoiceschanged = handler);
+      // 兜底：每 200ms 轮询一次（某些浏览器不触发事件）
+      const poll = setInterval(() => {
+        const list = window.speechSynthesis.getVoices() || [];
+        if (list.length) { clearInterval(poll); finish(list); }
+      }, 200);
+      // 超时
+      setTimeout(() => { clearInterval(poll); finish(window.speechSynthesis.getVoices() || []); }, timeoutMs || 2500);
+    });
+    return _voicesReadyPromise;
   }
 
+  async function _ensureBestVoice() {
+    if (!window.speechSynthesis) return null;
+    await _waitForVoices(2500);
+    const picked = _pickBestZhVoice();
+    if (picked.voice && picked.score > _zhVoiceScore) {
+      _zhVoice      = picked.voice;
+      _zhVoiceScore = picked.score;
+    }
+    return _zhVoice;
+  }
+
+  // ── Chrome 长句保活定时器 ─────────────────────────────────────
   function _startResumeTimer() {
     _stopResumeTimer();
     _resumeTimer = setInterval(() => {
@@ -962,26 +2458,21 @@ button:focus-visible {
     if (_resumeTimer) { clearInterval(_resumeTimer); _resumeTimer = null; }
   }
 
+  // ── 全局停止 ──────────────────────────────────────────────────
   function ttsStop() {
     _stopResumeTimer();
-    if (window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch(e){}
-    }
+    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch(e){} }
     if (_currentSource) { try { _currentSource.stop(); } catch(e){} _currentSource = null; }
+    if (_proxyAudioEl) {
+      try { _proxyAudioEl.pause(); _proxyAudioEl.src = ''; } catch(e){}
+      _proxyAudioEl = null;
+    }
+    _proxyAborted = true;
   }
 
-  function _makeUtterance(text, rate) {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang   = 'zh-CN';
-    u.rate   = rate || 0.9;
-    u.pitch  = 1.0;
-    u.volume = 1.0;
-    if (_zhVoice) u.voice = _zhVoice;
-    return u;
-  }
-
-  // 按句末标点分段，每段 ≤ 40 字
-  function _splitText(text) {
+  // ── 文本分段：按标点 + 长度 ────────────────────────────────────
+  function _splitText(text, maxLen) {
+    maxLen = maxLen || 40;
     const segs = [];
     const parts = text.split(/([。！？!?，,、；;：:]+)/);
     let buf = '';
@@ -996,73 +2487,204 @@ button:focus-visible {
     if (buf.trim()) segs.push(buf.trim());
     const out = [];
     for (const seg of segs) {
-      if (seg.length <= 40) out.push(seg);
-      else for (let i = 0; i < seg.length; i += 40) out.push(seg.slice(i, i + 40));
+      if (seg.length <= maxLen) out.push(seg);
+      else for (let i = 0; i < seg.length; i += maxLen) out.push(seg.slice(i, i + maxLen));
     }
     return out.length ? out : [text];
   }
 
-  // —— 浏览器 TTS 串行播放 ——
-  function _speakSegsBrowser(segs, rate, onDone) {
+  // ── Layer 2: 浏览器 SpeechSynthesis ───────────────────────────
+  function _makeUtterance(text, rate) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang   = 'zh-CN';
+    u.rate   = rate || 0.9;
+    u.pitch  = 1.0;
+    u.volume = 1.0;
+    if (_zhVoice) u.voice = _zhVoice;
+    return u;
+  }
+
+  function _speakSegsBrowser(segs, rate, onDone, onError) {
     if (!segs.length) { _stopResumeTimer(); if (onDone) onDone(); return; }
     const u = _makeUtterance(segs[0], rate);
-    u.onend   = () => _speakSegsBrowser(segs.slice(1), rate, onDone);
+    let errored = false;
+    u.onend   = () => { if (!errored) _speakSegsBrowser(segs.slice(1), rate, onDone, onError); };
     u.onerror = (e) => {
-      console.warn('[TTS] utterance error:', e.error || e);
-      _speakSegsBrowser(segs.slice(1), rate, onDone);
+      errored = true;
+      _stopResumeTimer();
+      if (onError) onError(e.error || 'utterance-error');
     };
     try { window.speechSynthesis.speak(u); }
-    catch (e) {
-      console.warn('[TTS] speak() threw:', e);
-      _speakSegsBrowser(segs.slice(1), rate, onDone);
+    catch (err) {
+      errored = true;
+      _stopResumeTimer();
+      if (onError) onError(err);
     }
   }
 
-  function _browserSpeak(text, rate, onDone) {
-    if (!window.speechSynthesis) {
-      console.warn('[TTS] 此环境不支持 speechSynthesis');
-      if (onDone) onDone(); return;
-    }
-    try { window.speechSynthesis.cancel(); } catch(e){}
-    _startResumeTimer();
-    _speakSegsBrowser(_splitText(text), rate, onDone);
+  // 浏览器层：返回 Promise，成功 = resolve('browser')，失败 = reject(reason)
+  async function _speakWithBrowser(text, rate) {
+    if (!window.speechSynthesis) throw new Error('no-speechSynthesis');
+    await _ensureBestVoice();
+    // 注意：voice 列表加载完仍可能没有中文语音 (_zhVoiceScore < 0)
+    // 我们仍然尝试用 lang=zh-CN 让系统挑（有些系统能播放）
+    // 但若播放过程出错或 score 太低 (<10)，就让外层回退到代理
+    return new Promise((resolve, reject) => {
+      _proxyAborted = false;
+      try { window.speechSynthesis.cancel(); } catch(e){}
+      _startResumeTimer();
+      // 设个保险定时器：如果 4 秒还没开始播，认为失败
+      const segs = _splitText(text, 40);
+      let started = false;
+      const startGuard = setTimeout(() => {
+        if (!started) { _stopResumeTimer(); reject(new Error('start-timeout')); }
+      }, 4000);
+      // 用 onstart 标记开始
+      const origMake = _makeUtterance;
+      // 把 onstart 挂到第一段
+      const firstU = origMake(segs[0], rate);
+      firstU.onstart = () => { started = true; clearTimeout(startGuard); };
+      firstU.onend   = () => _speakSegsBrowser(segs.slice(1), rate,
+        () => resolve('browser'),
+        err => reject(err));
+      firstU.onerror = (e) => { clearTimeout(startGuard); _stopResumeTimer(); reject(e.error || 'utterance-error'); };
+      try { window.speechSynthesis.speak(firstU); }
+      catch(err) { clearTimeout(startGuard); _stopResumeTimer(); reject(err); }
+    });
   }
 
-  // —— 用户手势解锁（首次任意点击触发一次静音 utterance）——
+  // ── Layer 3: 公开 TTS 代理兜底（Google Translate TTS）─────────
+  // 业界事实标准 endpoint，免费、无 key、CORS 友好
+  // 限制：每段 ≤ 200 字符；长句切段串行播放
+  // 慢速模式通过 HTMLAudioElement.playbackRate 实现
+  function _speakWithProxy(text, playbackRate) {
+    return new Promise((resolve, reject) => {
+      _proxyAborted = false;
+      const segs = _splitText(text, 180);
+      let i = 0;
+      const playNext = () => {
+        if (_proxyAborted) { reject(new Error('aborted')); return; }
+        if (i >= segs.length) { resolve('proxy'); return; }
+        const seg = segs[i++];
+        const url = 'https://translate.google.com/translate_tts'
+                  + '?ie=UTF-8&client=tw-ob&tl=zh-CN&q=' + encodeURIComponent(seg);
+        const audio = new Audio();
+        audio.crossOrigin = 'anonymous';
+        audio.preload = 'auto';
+        audio.playbackRate = playbackRate || 1.0;
+        _proxyAudioEl = audio;
+        // 加载超时保护：8 秒还没 canplay 就 reject
+        const loadGuard = setTimeout(() => {
+          try { audio.pause(); } catch(e){}
+          reject(new Error('proxy-load-timeout'));
+        }, 8000);
+        audio.oncanplay = () => clearTimeout(loadGuard);
+        audio.onended = playNext;
+        audio.onerror = (e) => { clearTimeout(loadGuard); reject(new Error('proxy-audio-error')); };
+        audio.src = url;
+        const playPromise = audio.play();
+        if (playPromise && playPromise.catch) {
+          playPromise.catch(err => { clearTimeout(loadGuard); reject(err); });
+        }
+      };
+      playNext();
+    });
+  }
+
+  // ── iOS/Chrome 用户手势解锁 ───────────────────────────────────
   function _unlockTTS() {
-    if (_ttsUnlocked || !window.speechSynthesis) return;
-    try {
-      const u = new SpeechSynthesisUtterance('');
-      u.volume = 0; u.lang = 'zh-CN';
-      window.speechSynthesis.speak(u);
-      _ttsUnlocked = true;
-      setTimeout(_refreshVoice, 200);
-      console.log('[TTS] 已通过用户手势解锁');
-    } catch(e) {
-      console.warn('[TTS] unlock failed:', e);
+    if (_ttsUnlocked) return;
+    _ttsUnlocked = true;
+    // 解锁 speechSynthesis：speak 一个 0 音量的静音 utterance
+    if (window.speechSynthesis) {
+      try {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0; u.lang = 'zh-CN';
+        window.speechSynthesis.speak(u);
+      } catch(e) {}
     }
+    // 解锁 Audio（代理 TTS 用）：play 一段无声 wav，立即 pause
+    try {
+      // 极小的 0.1s 静音 wav（base64）
+      const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      const a = new Audio(silentWav);
+      a.play().then(() => a.pause()).catch(() => {});
+    } catch(e) {}
+    // 解锁后再异步刷新一次 voice（iOS 在解锁前 voices 常为空）
+    setTimeout(() => _ensureBestVoice().then(updateEngineBadge), 300);
   }
+
   ['click','touchstart','keydown'].forEach(evt => {
     document.addEventListener(evt, _unlockTTS, { once: true, capture: true });
   });
 
-  // —— 统一入口 ——
-  // ttsSpeak(text, rate, onDone)
-  //   有 Azure 配置 → 走 Azure；失败自动回退浏览器 TTS
-  //   无 Azure 配置 → 直接浏览器 TTS
+  // ═══════════════════════════════════════════════════════════════
+  //  统一入口 ttsSpeak()
+  //
+  //  策略：
+  //    1) 有 Azure → 用 Azure；失败回退到浏览器
+  //    2) 浏览器有可用中文语音 (_zhVoiceScore >= 50) → 用浏览器
+  //    3) 浏览器 voice 质量差 (<50) 或不可用 → 用代理
+  //    4) 代理也失败 → 静默结束（避免卡死 UI）
+  //
+  //  慢速模式 (_slowMode === true) 会覆盖 rate
+  // ═══════════════════════════════════════════════════════════════
   function ttsSpeak(text, rate, onDone) {
     if (!text) { if (onDone) onDone(); return; }
     _unlockTTS();
+    // 先停掉前一次播放
+    ttsStop();
+    _proxyAborted = false;
+
+    const browserRate = _slowMode ? SLOW_RATE_BROWSER : (rate || NORMAL_RATE_BROWSER);
+    const azureRate   = _slowMode ? SLOW_RATE_AZURE   : AZURE_RATE;
+    const proxyRate   = _slowMode ? 0.7 : 1.0;       // 代理 TTS 用 playbackRate
+
+    const finish = (engine) => {
+      _currentEngine = engine;
+      updateEngineBadge();
+      if (onDone) onDone();
+    };
+
+    // 总策略：层层降级
+    const tryProxy = () => {
+      _speakWithProxy(text, proxyRate)
+        .then(() => finish(TTS_ENGINE.PROXY))
+        .catch(err => {
+          console.warn('[TTS][proxy] failed:', err && err.message ? err.message : err);
+          _currentEngine = TTS_ENGINE.NONE;
+          updateEngineBadge();
+          if (onDone) onDone();
+        });
+    };
+
+    const tryBrowser = () => {
+      if (!window.speechSynthesis) { tryProxy(); return; }
+      _ensureBestVoice().then(() => {
+        // 如果质量评分太低（没有中文语音或质量很差），直接跳到代理
+        if (_zhVoiceScore < 50) {
+          console.log('[TTS] browser voice score low (' + _zhVoiceScore + '), using proxy');
+          tryProxy();
+          return;
+        }
+        _speakWithBrowser(text, browserRate)
+          .then(() => finish(TTS_ENGINE.BROWSER))
+          .catch(err => {
+            console.warn('[TTS][browser] failed:', err && err.message ? err.message : err);
+            tryProxy();
+          });
+      });
+    };
 
     if (_hasAzure) {
-      speakWithAzure(text, AZURE_RATE, AZURE_PITCH)
-        .then(() => { if (onDone) onDone(); })
+      speakWithAzure(text, azureRate, AZURE_PITCH)
+        .then(() => finish(TTS_ENGINE.AZURE))
         .catch(err => {
-          console.warn('[TTS] Azure 失败，回退浏览器：', err);
-          _browserSpeak(text, rate, onDone);
+          console.warn('[TTS][azure] failed, falling back:', err && err.message ? err.message : err);
+          tryBrowser();
         });
     } else {
-      _browserSpeak(text, rate, onDone);
+      tryBrowser();
     }
   }
 
@@ -1070,6 +2692,30 @@ button:focus-visible {
   function speakChinese(text, opts) {
     ttsSpeak(text, (opts && opts.browserRate) || 0.9, null);
   }
+
+  // ── 引擎徽章 UI（左下角，开发/调试可见，不打扰用户）─────────
+  function updateEngineBadge() {
+    const el = document.getElementById('ttsEngineBadge');
+    if (!el) return;
+    const meta = {
+      [TTS_ENGINE.AZURE]:   { label: 'Azure',   color: '#10b981', dot: '●' },
+      [TTS_ENGINE.BROWSER]: { label: 'Native',  color: '#6366f1', dot: '●' },
+      [TTS_ENGINE.PROXY]:   { label: 'Cloud',   color: '#f59e0b', dot: '●' },
+      [TTS_ENGINE.NONE]:    { label: 'Ready',   color: '#94a3b8', dot: '○' },
+    };
+    const m = meta[_currentEngine] || meta[TTS_ENGINE.NONE];
+    el.style.color = m.color;
+    el.innerHTML = `<span class="tts-dot">${m.dot}</span> TTS · ${m.label}`;
+  }
+
+  // 启动时静默初始化：等 voice 列表加载完，刷新徽章
+  if (window.speechSynthesis) {
+    _ensureBestVoice().then(() => updateEngineBadge());
+  } else {
+    console.warn('[TTS] 此环境不支持 speechSynthesis，将使用云端代理');
+    updateEngineBadge();
+  }
+
 
   // ═══════════════════════════════════════════════════════════════
   //  Azure Pronunciation Assessment 接口预留
@@ -1271,11 +2917,23 @@ button:focus-visible {
       } else {
         hintRow.style.display = 'none';
       }
+      // 重置声调曲线折叠状态
+      const toneCurves = document.getElementById('toneCurves');
+      const toneToggle = document.getElementById('toneToggle');
+      if (toneCurves && toneCurves.classList.contains('show')) {
+        // 已展开：直接刷新内容
+        renderToneCurves();
+      } else if (toneToggle) {
+        toneToggle.classList.remove('open');
+      }
       box.classList.remove('changing');
       renderProgress();
     }, 200);
     document.getElementById('feedbackContent').classList.remove('show');
     document.getElementById('nextBtn').disabled = true;
+    // 恢复桌面端占位框
+    const ph = document.getElementById('dtPlaceholder');
+    if (ph) ph.classList.remove('hidden');
     setMicState(MIC_STATE.IDLE);
   }
 
@@ -1307,7 +2965,12 @@ button:focus-visible {
   // ═══════════════════════════════════════════════════════════════
   function toggleRecording() {
     if (isPlaying) return;
-    isRecording ? stopRecording() : startRecording();
+    if (isRecording) {
+      stopRecording();
+    } else {
+      // 录音前 3-2-1 倒计时，给用户心理准备
+      runCountdown(() => startRecording());
+    }
   }
 
   async function startRecording() {
@@ -1427,11 +3090,25 @@ button:focus-visible {
   function showFeedback(score, transcript, result) {
     const card = document.getElementById('feedbackContent');
     card.classList.remove('show', 'excellent', 'good', 'try-again');
+    // 隐藏桌面端占位框
+    const ph = document.getElementById('dtPlaceholder');
+    if (ph) ph.classList.add('hidden');
 
     let tier, emoji, praise;
     if      (score >= 85) { tier = 'excellent'; emoji = '🌟'; praise = pickRandom(praiseLines.excellent); }
     else if (score >= 62) { tier = 'good';      emoji = '👍'; praise = pickRandom(praiseLines.good); }
     else                  { tier = 'try-again'; emoji = '💪'; praise = pickRandom(praiseLines.tryAgain); }
+
+    // ── 连击系统 + 每日星星 + 打卡 ──
+    handleScoreGameLogic(score);
+
+    // 分享按钮：高分才显示
+    const shareBtn = document.getElementById('shareBtn');
+    if (shareBtn) {
+      if (score >= SHARE_MIN_SCORE) shareBtn.classList.remove('hidden');
+      else                          shareBtn.classList.add('hidden');
+    }
+    _lastScore = score; // 给分享卡片用
 
     document.getElementById('fbScore').textContent    = score;
     document.getElementById('fbEmoji').textContent    = emoji;
@@ -1539,10 +3216,732 @@ button:focus-visible {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  🎮 游戏化 · 状态持久化 (localStorage)
+  // ═══════════════════════════════════════════════════════════════
+  const STORAGE_KEY = 'pingo_ar_zh_state_v1';
+
+  // 默认状态
+  let _state = {
+    streak: 0,              // 连续打卡天数
+    lastPracticeDate: null, // 上次完成每日目标的日期 (YYYY-MM-DD)
+    todayDate: null,        // 今日日期
+    todayStars: 0,          // 今日已得星星数
+    combo: 0,               // 当前连击数
+    bestCombo: 0,           // 历史最高连击
+    totalSentences: 0,      // 总完成句子数
+  };
+
+  let _lastScore = 0;       // 给分享卡片用
+
+  function _today() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function _yesterday(dateStr) {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const t = new Date(_today());
+    const diff = Math.round((t - d) / 86400000);
+    return diff === 1;
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) Object.assign(_state, JSON.parse(raw));
+    } catch(e) { console.warn('[state] load failed', e); }
+
+    // 跨日处理
+    const today = _today();
+    if (_state.todayDate !== today) {
+      // 新的一天：清空今日星星和连击
+      _state.todayDate = today;
+      _state.todayStars = 0;
+      _state.combo = 0;
+      // 如果上次完成不是昨天，streak 断了
+      if (_state.lastPracticeDate && !_yesterday(_state.lastPracticeDate) && _state.lastPracticeDate !== today) {
+        _state.streak = 0;
+      }
+      saveState();
+    }
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_state)); }
+    catch(e) { console.warn('[state] save failed', e); }
+  }
+
+  function renderTopStats() {
+    // Streak
+    const pill = document.getElementById('streakPill');
+    document.getElementById('streakDays').textContent = _state.streak;
+    if (_state.streak > 0) pill.classList.remove('zero');
+    else                   pill.classList.add('zero');
+
+    // Daily stars
+    const stars = document.querySelectorAll('.daily-star');
+    stars.forEach((el, i) => {
+      if (i < _state.todayStars) el.classList.add('lit');
+      else                       el.classList.remove('lit');
+    });
+  }
+
+  function bumpStreakPill() {
+    const pill = document.getElementById('streakPill');
+    pill.classList.remove('bump');
+    void pill.offsetWidth; // 重启动画
+    pill.classList.add('bump');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🔥 连击系统 Combo
+  // ═══════════════════════════════════════════════════════════════
+  function updateComboUI() {
+    const badge  = document.getElementById('comboBadge');
+    const numEl  = document.getElementById('comboNum');
+    if (_state.combo >= 2) {
+      numEl.textContent = '×' + _state.combo;
+      badge.classList.add('show');
+      badge.classList.remove('bump');
+      void badge.offsetWidth;
+      badge.classList.add('bump');
+    } else {
+      badge.classList.remove('show');
+    }
+  }
+
+  function fireComboBurst(count) {
+    const burst = document.getElementById('comboBurst');
+    const symbols = ['🔥','⭐','✨','💫'];
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement('span');
+      s.textContent = symbols[Math.floor(Math.random()*symbols.length)];
+      const startX = 30 + Math.random() * 60; // 来自顶部左侧
+      const startY = 20 + Math.random() * 30;
+      s.style.left = startX + 'px';
+      s.style.top  = startY + 'px';
+      const tx = (Math.random() - 0.3) * 280;
+      const ty = 80 + Math.random() * 200;
+      const rot = (Math.random() - 0.5) * 720;
+      s.style.setProperty('--tx', tx + 'px');
+      s.style.setProperty('--ty', ty + 'px');
+      s.style.setProperty('--rot', rot + 'deg');
+      s.style.animationDelay = (i * 0.05) + 's';
+      burst.appendChild(s);
+      setTimeout(() => s.remove(), 1500);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ⭐ 每日星星 + 🔥 Streak 更新
+  // ═══════════════════════════════════════════════════════════════
+  function handleScoreGameLogic(score) {
+    // 1) Combo
+    if (score >= COMBO_MIN_SCORE) {
+      _state.combo++;
+      if (_state.combo > _state.bestCombo) _state.bestCombo = _state.combo;
+      updateComboUI();
+      if (_state.combo >= 3) fireComboBurst(Math.min(_state.combo + 2, 10));
+    } else if (score < COMBO_BREAK_SCORE) {
+      _state.combo = 0;
+      updateComboUI();
+    }
+    // 中间分数 (60-74) 不加 combo 也不打断，保持现状
+
+    // 2) 每日星星 (≥60 分算一颗星)
+    let earnedStarThisRound = false;
+    if (score >= DAILY_GOAL_MIN_SCORE && _state.todayStars < DAILY_GOAL) {
+      _state.todayStars++;
+      earnedStarThisRound = true;
+      renderTopStats();
+      // 星星亮起后弹一下
+      const target = document.querySelector(`.daily-star[data-i="${_state.todayStars - 1}"]`);
+      if (target) {
+        target.classList.remove('lit');
+        void target.offsetWidth;
+        target.classList.add('lit');
+      }
+    }
+    _state.totalSentences++;
+
+    // 4) 记录到当前 pack 的进度
+    recordPackScore(score);
+
+    // 3) 完成今日目标 → streak +1 (今天还没拿过)
+    if (earnedStarThisRound && _state.todayStars === DAILY_GOAL) {
+      const today = _today();
+      if (_state.lastPracticeDate !== today) {
+        // 昨天有打卡 → 连续；否则重置为 1
+        _state.streak = _yesterday(_state.lastPracticeDate) ? (_state.streak + 1) : 1;
+        _state.lastPracticeDate = today;
+        renderTopStats();
+        bumpStreakPill();
+        // 弹出庆祝弹窗
+        setTimeout(() => showCelebrate(), 800);
+      }
+    }
+    saveState();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🎊 庆祝弹窗
+  // ═══════════════════════════════════════════════════════════════
+  function showCelebrate() {
+    document.getElementById('celebrateStreak').textContent = _state.streak;
+    const overlay = document.getElementById('celebrateOverlay');
+    overlay.classList.add('show');
+    spawnConfetti();
+  }
+  function closeCelebrate() {
+    document.getElementById('celebrateOverlay').classList.remove('show');
+    document.getElementById('celebrateConfetti').innerHTML = '';
+  }
+  function spawnConfetti() {
+    const c = document.getElementById('celebrateConfetti');
+    c.innerHTML = '';
+    const emojis = ['🎉','✨','⭐','🎊','💫','🔥'];
+    for (let i = 0; i < 18; i++) {
+      const s = document.createElement('span');
+      s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+      s.style.left = (Math.random() * 100) + '%';
+      s.style.animationDelay = (Math.random() * 1.5) + 's';
+      s.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
+      c.appendChild(s);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ⏱️ 录音前 3-2-1 倒计时
+  // ═══════════════════════════════════════════════════════════════
+  function runCountdown(onComplete) {
+    const overlay = document.getElementById('countdownOverlay');
+    const numEl   = document.getElementById('countdownNum');
+    let step = 3;
+    overlay.classList.add('show');
+    numEl.classList.remove('go');
+    numEl.textContent = step;
+    // 重启动画
+    numEl.style.animation = 'none';
+    void numEl.offsetWidth;
+    numEl.style.animation = '';
+
+    const tick = () => {
+      step--;
+      if (step > 0) {
+        numEl.classList.remove('go');
+        numEl.textContent = step;
+        numEl.style.animation = 'none';
+        void numEl.offsetWidth;
+        numEl.style.animation = '';
+        setTimeout(tick, COUNTDOWN_MS_PER_STEP);
+      } else if (step === 0) {
+        numEl.classList.add('go');
+        numEl.textContent = 'GO!';
+        numEl.style.animation = 'none';
+        void numEl.offsetWidth;
+        numEl.style.animation = '';
+        setTimeout(() => {
+          overlay.classList.remove('show');
+          if (onComplete) onComplete();
+        }, 500);
+      }
+    };
+    setTimeout(tick, COUNTDOWN_MS_PER_STEP);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🐢 慢速模式开关
+  // ═══════════════════════════════════════════════════════════════
+  function toggleSlowMode() {
+    _slowMode = !_slowMode;
+    const btn = document.getElementById('speedBtn');
+    if (_slowMode) {
+      btn.classList.add('active');
+      btn.title = 'العادي · 正常速度';
+    } else {
+      btn.classList.remove('active');
+      btn.title = 'بطيء · 慢速';
+    }
+    // 立即用新速度播一遍标准发音，让用户听到差异
+    if (!isPlaying && !isRecording) {
+      playStandard();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🔁 再来一次
+  // ═══════════════════════════════════════════════════════════════
+  function retryCurrent() {
+    if (isPlaying || isRecording) return;
+    document.getElementById('feedbackContent').classList.remove('show');
+    document.getElementById('nextBtn').disabled = true;
+    // 恢复桌面端占位框
+    const ph = document.getElementById('dtPlaceholder');
+    if (ph) ph.classList.remove('hidden');
+    runCountdown(() => startRecording());
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  📤 分享卡片
+  // ═══════════════════════════════════════════════════════════════
+  function openShare() {
+    const lesson = LESSONS[currentIndex];
+    document.getElementById('shareZh').textContent    = lesson.zh;
+    document.getElementById('sharePy').textContent    = lesson.py;
+    document.getElementById('shareScore').textContent = _lastScore;
+    document.getElementById('shareOverlay').classList.add('show');
+  }
+  function closeShare() {
+    document.getElementById('shareOverlay').classList.remove('show');
+  }
+
+  // 把分享预览渲染到 canvas，方便下载/原生分享
+  function renderShareToCanvas() {
+    const canvas = document.getElementById('shareCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    // 背景渐变
+    const grd = ctx.createLinearGradient(0, 0, W, H);
+    grd.addColorStop(0, '#6366f1');
+    grd.addColorStop(1, '#7c3aed');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+    // 圆角白卡（内嵌）
+    const pad = 48;
+    const cardX = pad, cardY = pad, cardW = W - pad*2, cardH = H - pad*2;
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    _roundRect(ctx, cardX, cardY, cardW, cardH, 36, true, false);
+
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+
+    // 品牌
+    ctx.font = '600 24px Nunito, sans-serif';
+    ctx.globalAlpha = 0.85;
+    ctx.fillText('AI · 中文发音练习', W/2, 180);
+    ctx.globalAlpha = 1;
+
+    // 汉字
+    ctx.font = '500 96px "Noto Sans SC", sans-serif';
+    ctx.fillText(LESSONS[currentIndex].zh, W/2, 350);
+    // 拼音
+    ctx.font = '600 36px Nunito, sans-serif';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(LESSONS[currentIndex].py, W/2, 420);
+    ctx.globalAlpha = 1;
+
+    // 大分数
+    ctx.font = '800 200px Nunito, sans-serif';
+    ctx.fillText(String(_lastScore), W/2, 680);
+
+    // 分数标签
+    ctx.font = '500 22px Nunito, sans-serif';
+    ctx.globalAlpha = 0.85;
+    ctx.fillText('PRONUNCIATION SCORE', W/2, 730);
+    ctx.globalAlpha = 1;
+
+    // 分割线
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(W/2 - 120, 800);
+    ctx.lineTo(W/2 + 120, 800);
+    ctx.stroke();
+
+    // 阿拉伯语 tagline
+    ctx.font = '500 28px "IBM Plex Sans Arabic", sans-serif';
+    ctx.globalAlpha = 0.95;
+    ctx.fillText('🇨🇳 أتعلّم الصينية يومياً', W/2, 860);
+    ctx.globalAlpha = 1;
+  }
+
+  function _roundRect(ctx, x, y, w, h, r, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x,     y + h, r);
+    ctx.arcTo(x,     y + h, x,     y,     r);
+    ctx.arcTo(x,     y,     x + w, y,     r);
+    ctx.closePath();
+    if (fill)   ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  function downloadShare() {
+    renderShareToCanvas();
+    const canvas = document.getElementById('shareCanvas');
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pronunciation-${_lastScore}-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }
+
+  async function nativeShare() {
+    renderShareToCanvas();
+    const canvas = document.getElementById('shareCanvas');
+    canvas.toBlob(async blob => {
+      const file = new File([blob], 'pronunciation.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'تدرّب على نطق الصينية',
+            text: `حصلت على ${_lastScore} في نطق "${LESSONS[currentIndex].zh}" 🇨🇳`,
+          });
+        } catch(e) { /* user cancelled */ }
+      } else {
+        // 不支持原生分享 → 退回下载
+        downloadShare();
+      }
+    }, 'image/png');
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════
+  //  📦 场景包系统 · PACKS
+  // ═══════════════════════════════════════════════════════════════
+
+  // pack 进度存储结构：
+  //   packProgress[packId] = {
+  //     scores: [s1,s2,...]     // 每个句子的最高分（位置对应 lesson index）
+  //     completed: boolean      // 是否通关（所有 lessons avg >= 70 且都有分）
+  //   }
+  function getPackProgress(packId) {
+    if (!_state.packProgress) _state.packProgress = {};
+    if (!_state.packProgress[packId]) _state.packProgress[packId] = { scores: [], completed: false };
+    return _state.packProgress[packId];
+  }
+
+  function isPackUnlocked(packIdx) {
+    if (packIdx === 0) return true;
+    const prev = PACKS[packIdx - 1];
+    const p = getPackProgress(prev.id);
+    // 解锁条件：上一个 pack 所有句子都至少练过一次，且平均分 ≥ 60
+    if (!p.scores.length || p.scores.length < prev.lessons.length) return false;
+    const valid = p.scores.filter(s => s != null);
+    if (valid.length < prev.lessons.length) return false;
+    const avg = valid.reduce((a,b)=>a+b,0) / valid.length;
+    return avg >= 60;
+  }
+
+  function getPackStats(pack) {
+    const p = getPackProgress(pack.id);
+    const valid = (p.scores || []).filter(s => s != null);
+    return {
+      done: valid.length,
+      total: pack.lessons.length,
+      avg: valid.length ? Math.round(valid.reduce((a,b)=>a+b,0) / valid.length) : 0,
+      best: valid.length ? Math.max(...valid) : 0,
+      completed: p.completed,
+    };
+  }
+
+  function renderPacks() {
+    const grid = document.getElementById('packsGrid');
+    grid.innerHTML = '';
+    PACKS.forEach((pack, idx) => {
+      const unlocked = isPackUnlocked(idx);
+      const stats    = getPackStats(pack);
+      const pct      = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
+
+      const tile = document.createElement('div');
+      tile.className = 'pack-tile' + (unlocked ? '' : ' locked');
+      tile.setAttribute('data-color', pack.color);
+      tile.setAttribute('data-pack-id', pack.id);
+      tile.setAttribute('data-pack-idx', idx);
+
+      const badgeHtml = stats.completed
+        ? `<div class="pack-badge" title="مكتمل">✓</div>`
+        : '';
+      const lockHtml = !unlocked
+        ? `<div class="pack-lock-icon">🔒</div>`
+        : '';
+
+      tile.innerHTML = `
+        ${badgeHtml}
+        ${lockHtml}
+        <div class="pack-emoji">${pack.emoji}</div>
+        <div class="pack-name-ar">${pack.nameAr}</div>
+        <div class="pack-name-zh">${pack.nameZh}</div>
+        <div class="pack-progress"><div class="pack-progress-fill" style="width:${pct}%"></div></div>
+        <div class="pack-meta">
+          <strong>${stats.done}</strong>/${stats.total}
+          ${stats.best ? ` · ⭐ ${stats.best}` : ''}
+        </div>
+      `;
+      tile.addEventListener('click', () => {
+        if (!unlocked) {
+          // 锁定状态：抖动提示
+          tile.style.animation = 'shake .4s ease';
+          setTimeout(() => tile.style.animation = '', 450);
+          return;
+        }
+        enterPack(pack.id);
+      });
+      grid.appendChild(tile);
+    });
+  }
+
+  function enterPack(packId) {
+    const pack = PACKS.find(p => p.id === packId);
+    if (!pack) return;
+    currentPackId = packId;
+    LESSONS = pack.lessons;
+    currentIndex = 0;
+    // 切换视图
+    document.body.classList.add('in-practice');
+    // 更新当前 pack 标签
+    document.getElementById('currentPackEmoji').textContent = pack.emoji;
+    document.getElementById('currentPackName').textContent  = pack.nameAr + ' · ' + pack.nameZh;
+    // 重渲染
+    renderProgress();
+    showSentence();
+    // 自动播一次标准发音，让用户进入沉浸
+    setTimeout(() => playStandard(), 350);
+  }
+
+  function returnToPacks() {
+    ttsStop();
+    // 停止任何正在进行的录音
+    try { stopRecording(); } catch(e) {}
+    isRecording = false;
+    isPlaying   = false;
+    document.body.classList.remove('in-practice');
+    // 关闭所有反馈
+    document.getElementById('feedbackContent').classList.remove('show');
+    setMicState(MIC_STATE.IDLE);
+    // 刷新场景卡片进度
+    renderPacks();
+  }
+
+  // 在 handleScoreGameLogic 完成后调用：记录到 pack 进度
+  function recordPackScore(score) {
+    if (!currentPackId) return;
+    const p = getPackProgress(currentPackId);
+    if (!p.scores) p.scores = [];
+    // 只记录该句子的"最高分"
+    const old = p.scores[currentIndex];
+    if (old == null || score > old) p.scores[currentIndex] = score;
+    saveState();
+
+    // 检查通关
+    const pack = PACKS.find(x => x.id === currentPackId);
+    if (!pack) return;
+    const validCount = p.scores.filter(s => s != null).length;
+    if (validCount >= pack.lessons.length) {
+      const avg = p.scores.reduce((a,b)=>a+(b||0),0) / pack.lessons.length;
+      if (avg >= 70 && !p.completed) {
+        p.completed = true;
+        saveState();
+        // 检查是否解锁了下一个
+        const nextIdx = PACKS.findIndex(x => x.id === currentPackId) + 1;
+        const nextPack = PACKS[nextIdx];
+        setTimeout(() => {
+          showCertificate(pack);
+          if (nextPack) {
+            setTimeout(() => showUnlockToast(nextPack), 600);
+          }
+        }, 1000);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🏆 通关证书
+  // ═══════════════════════════════════════════════════════════════
+  let _certPack = null;
+  function showCertificate(pack) {
+    _certPack = pack;
+    const stats = getPackStats(pack);
+    document.getElementById('certPackAr').textContent = pack.nameAr;
+    document.getElementById('certPackZh').textContent = pack.nameZh + ' · ' + pack.desc;
+    document.getElementById('certMedal').textContent  = pack.emoji;
+    document.getElementById('certAvg').textContent    = stats.avg;
+    document.getElementById('certBest').textContent   = stats.best;
+    document.getElementById('certCount').textContent  = stats.total;
+    document.getElementById('certOverlay').classList.add('show');
+  }
+  function closeCert() {
+    document.getElementById('certOverlay').classList.remove('show');
+  }
+
+  function downloadCert() {
+    if (!_certPack) return;
+    const pack  = _certPack;
+    const stats = getPackStats(pack);
+    const canvas = document.getElementById('shareCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    // 背景
+    const grd = ctx.createLinearGradient(0, 0, W, H);
+    grd.addColorStop(0, '#6366f1');
+    grd.addColorStop(1, '#7c3aed');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    // Emoji 大徽章
+    ctx.font = '160px sans-serif';
+    ctx.fillText(pack.emoji, W/2, 280);
+    // 标签
+    ctx.font = '600 24px Nunito, sans-serif';
+    ctx.globalAlpha = .85;
+    ctx.fillText('CERTIFICATE OF COMPLETION', W/2, 360);
+    ctx.globalAlpha = 1;
+    // 包名
+    ctx.font = '700 56px "IBM Plex Sans Arabic", sans-serif';
+    ctx.fillText(pack.nameAr, W/2, 460);
+    ctx.font = '500 36px "Noto Sans SC", sans-serif';
+    ctx.globalAlpha = .9;
+    ctx.fillText(pack.nameZh, W/2, 520);
+    ctx.globalAlpha = 1;
+    // 统计数据
+    ctx.font = '800 96px Nunito, sans-serif';
+    ctx.fillText(stats.avg + '', W/2 - 200, 720);
+    ctx.fillText(stats.best + '', W/2,      720);
+    ctx.fillText(stats.total + '', W/2 + 200, 720);
+    ctx.font = '500 18px Nunito, sans-serif';
+    ctx.globalAlpha = .8;
+    ctx.fillText('AVG',       W/2 - 200, 760);
+    ctx.fillText('BEST',      W/2,       760);
+    ctx.fillText('SENTENCES', W/2 + 200, 760);
+    ctx.globalAlpha = 1;
+    // 底部品牌
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(W/2 - 120, 850); ctx.lineTo(W/2 + 120, 850); ctx.stroke();
+    ctx.font = '500 26px "IBM Plex Sans Arabic", sans-serif';
+    ctx.globalAlpha = .95;
+    ctx.fillText('🇨🇳 AI · مدرّب نطق الصينية', W/2, 910);
+
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cert-${pack.id}-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🔓 解锁提示 Toast
+  // ═══════════════════════════════════════════════════════════════
+  function showUnlockToast(nextPack) {
+    const t = document.getElementById('unlockToast');
+    document.getElementById('unlockToastText').textContent =
+      `تم فتح: ${nextPack.emoji} ${nextPack.nameAr}`;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  📈 声调曲线可视化
+  //  pinyin 形如 "nǐ hǎo" → 自动检测每个音节的声调，画出对应曲线
+  // ═══════════════════════════════════════════════════════════════
+  const TONE_MAP = {
+    // 一声
+    'ā':1,'ē':1,'ī':1,'ō':1,'ū':1,'ǖ':1,
+    // 二声
+    'á':2,'é':2,'í':2,'ó':2,'ú':2,'ǘ':2,
+    // 三声
+    'ǎ':3,'ě':3,'ǐ':3,'ǒ':3,'ǔ':3,'ǚ':3,
+    // 四声
+    'à':4,'è':4,'ì':4,'ò':4,'ù':4,'ǜ':4,
+  };
+  // 把带声调的字母还原成纯字母，方便显示
+  const TONE_STRIP = {
+    'ā':'a','á':'a','ǎ':'a','à':'a',
+    'ē':'e','é':'e','ě':'e','è':'e',
+    'ī':'i','í':'i','ǐ':'i','ì':'i',
+    'ō':'o','ó':'o','ǒ':'o','ò':'o',
+    'ū':'u','ú':'u','ǔ':'u','ù':'u',
+    'ǖ':'ü','ǘ':'ü','ǚ':'ü','ǜ':'ü',
+  };
+  function detectTone(syllable) {
+    for (const ch of syllable) {
+      if (TONE_MAP[ch] != null) return TONE_MAP[ch];
+    }
+    return 0; // 轻声
+  }
+  function stripPinyin(syllable) {
+    return syllable.split('').map(c => TONE_STRIP[c] || c).join('');
+  }
+
+  // SVG 曲线路径（基于 38x36 viewBox，y=0 顶，y=36 底）
+  // 声调形象化：1 平 2 升 3 凹 4 降 0 点
+  function toneSvg(tone) {
+    const colors = {
+      1: '#6366f1', // indigo - 平
+      2: '#10b981', // green - 升
+      3: '#f59e0b', // amber - 凹
+      4: '#f43f5e', // rose - 降
+      0: '#94a3b8', // muted - 轻声
+    };
+    const stroke = colors[tone];
+    let path;
+    if      (tone === 1) path = 'M 4 8 L 34 8';
+    else if (tone === 2) path = 'M 4 30 L 34 6';
+    else if (tone === 3) path = 'M 4 10 Q 19 38 34 10';
+    else if (tone === 4) path = 'M 4 6 L 34 30';
+    else {
+      // 轻声：圆点
+      return `<svg class="tone-curve-svg" viewBox="0 0 38 36" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="19" cy="18" r="4" fill="${stroke}"/>
+      </svg>`;
+    }
+    return `<svg class="tone-curve-svg" viewBox="0 0 38 36" xmlns="http://www.w3.org/2000/svg">
+      <path d="${path}" stroke="${stroke}" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </svg>`;
+  }
+
+  function renderToneCurves() {
+    const lesson = LESSONS[currentIndex];
+    if (!lesson) return;
+    const inner = document.getElementById('toneCurvesInner');
+    inner.innerHTML = '';
+    const sylls = lesson.py.split(/\s+/);
+    // chars 数组的 hz 跟 syllables 一一对应
+    sylls.forEach((syl, i) => {
+      const tone = detectTone(syl);
+      const hz   = (lesson.chars && lesson.chars[i]) ? lesson.chars[i].hz : '';
+      const div = document.createElement('div');
+      div.className = 'tone-curve';
+      div.innerHTML = `
+        ${toneSvg(tone)}
+        <div class="tone-curve-py">${stripPinyin(syl)}${tone>0?'<sup style="font-size:8px;opacity:.7">'+tone+'</sup>':''}</div>
+        <div class="tone-curve-hz">${hz}</div>
+      `;
+      inner.appendChild(div);
+    });
+  }
+
+  function toggleTones() {
+    const toggle = document.getElementById('toneToggle');
+    const curves = document.getElementById('toneCurves');
+    const open = curves.classList.toggle('show');
+    if (open) {
+      toggle.classList.add('open');
+      renderToneCurves();
+    } else {
+      toggle.classList.remove('open');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  初始化
   // ═══════════════════════════════════════════════════════════════
-  renderProgress();
-  showSentence();
+  loadState();          // 从 localStorage 恢复 streak / 今日星星 / pack 进度
+  renderTopStats();     // 顶部状态栏
+  updateComboUI();      // 显示已存在的 combo
+  renderPacks();        // 渲染场景选择页（默认视图）
+  // 不立即调用 showSentence —— 用户先选场景，进入后再渲染句子
   // voices 由顶部 _loadVoices() + onvoiceschanged 自动处理
 
 </script>
