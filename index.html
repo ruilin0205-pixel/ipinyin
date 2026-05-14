@@ -1461,103 +1461,116 @@ body.in-practice .view-practice { display: block; }
 
 /* ── Mobile ─────────────────────────────────────────────────── */
 /* 范围扩到 499px：覆盖所有手机视口（iPhone/Android），不仅是窄屏。
-   目标：练习页面在移动端一屏可见，"下一句"按钮无需滚动即可点到。 */
+   设计目标：练习页核心区（句子+麦克风+下一句按钮）在一屏内可见，
+            评分卡片出现时句子框自动收缩、反馈区紧凑，"下一句"按钮始终
+            紧跟反馈卡片之后，无需大幅滚动。 */
 @media (max-width: 499px) {
+  /* —— body：取消垂直居中，改为顶部对齐，避免短内容上下产生空白 —— */
+  body {
+    align-items: flex-start;
+    padding: 6px 6px 12px;
+    min-height: 100vh;
+  }
+  .page-wrap { gap: 6px; max-width: 100%; }
+
   /* —— 整体瘦身：卡片内边距收紧 —— */
-  .card-body   { padding: 16px 14px 14px; }
+  .card-body   { padding: 14px 14px 14px; }
 
   /* —— 顶部状态栏：更紧凑 —— */
-  .top-stats { margin-bottom: 10px; gap: 8px; padding: 0 2px; }
+  .top-stats { margin-bottom: 8px; gap: 8px; padding: 0 2px; }
   .streak-pill, .daily-stars { font-size: 11px; padding: 4px 9px; border-radius: 12px; }
   .streak-icon { font-size: 12px; }
   .daily-star { font-size: 12px; }
 
   /* —— 标题区：缩小并紧贴 —— */
-  .header      { margin-bottom: 12px; }
-  .title       { font-size: 17px; line-height: 1.3; }
+  .header      { margin-bottom: 10px; }
+  .title       { font-size: 16px; line-height: 1.3; }
   .subtitle    { margin-top: 2px; font-size: 10.5px; }
-  .current-pack-tag { margin-top: 6px; padding: 3px 9px; font-size: 11.5px; }
+  .current-pack-tag { margin-top: 5px; padding: 3px 9px; font-size: 11.5px; }
 
   /* —— 进度点：更紧凑 —— */
-  .progress { margin-bottom: 11px; gap: 4px; }
-  .progress-dot { width: 16px; height: 3px; }
-  .progress-dot.active { width: 22px; }
+  .progress { margin-bottom: 10px; gap: 4px; }
+  .progress-dot { width: 14px; height: 3px; }
+  .progress-dot.active { width: 20px; }
 
-  /* —— 句子框：核心瘦身区，padding 与 margin 都收紧 —— */
-  .sentence-box { padding: 14px 14px 12px; margin-bottom: 11px; border-radius: 16px; }
-  /* .chinese 字号由 clamp() 控制，这里只调字距和行高，压缩垂直高度 */
-  .chinese     { letter-spacing: 1.8px; line-height: 1.4; margin-bottom: 6px; }
-  .pinyin      { font-size: 14px; margin-bottom: 6px; line-height: 1.3; }
-  .arabic-meaning { font-size: 13.5px; line-height: 1.5; padding-top: 7px; }
-  .hint-row { margin-top: 7px; padding-top: 7px; gap: 4px; }
-  .hint-text { font-size: 12px; line-height: 1.55; }
+  /* —— 句子框：默认紧凑 —— */
+  .sentence-box {
+    padding: 12px 12px 11px; margin-bottom: 10px; border-radius: 16px;
+    transition: padding .25s, margin .25s, opacity .25s, transform .25s;
+  }
+  /* .chinese 字号由 clamp() 控制，这里只调字距和行高 */
+  .chinese     { letter-spacing: 1.6px; line-height: 1.35; margin-bottom: 5px; }
+  .pinyin      { font-size: 14px; margin-bottom: 5px; line-height: 1.3; }
+  .arabic-meaning { font-size: 13.5px; line-height: 1.5; padding-top: 6px; }
+  .hint-row {
+    margin-top: 6px; padding-top: 6px; gap: 4px;
+    transition: max-height .25s, opacity .25s, margin .25s, padding .25s;
+    overflow: hidden;
+  }
+  .hint-text { font-size: 11.5px; line-height: 1.5; }
   .hint-icon { font-size: 10px; }
   /* 声调图按钮：默认折叠（max-height:0），按钮本身收紧 */
-  .tone-toggle { margin-top: 6px; padding: 3px 8px; font-size: 10px; }
+  .tone-toggle { margin-top: 5px; padding: 3px 8px; font-size: 10px; }
+
+  /* —— 评分出现后：句子框收缩，把空间让给反馈卡片 —— */
+  /* hint-row 折叠不可见，节省 ~40px */
+  body.has-feedback .hint-row {
+    max-height: 0; opacity: 0;
+    margin-top: 0; padding-top: 0; border-top-color: transparent;
+  }
+  body.has-feedback .sentence-box { padding-bottom: 8px; margin-bottom: 8px; }
 
   /* —— 听力按钮 + 速度按钮：更紧凑 —— */
-  .listen-row { margin-bottom: 10px; gap: 6px; }
+  .listen-row { margin-bottom: 8px; gap: 6px; }
   .listen-btn { padding: 9px 14px; font-size: 13px; border-radius: 12px; margin-bottom: 0; }
   .listen-btn svg { width: 15px; height: 15px; }
-  .speed-btn   { width: 46px; font-size: 11px; padding: 9px 0; }
+  .speed-btn   { width: 44px; font-size: 11px; padding: 9px 0; }
 
   /* —— 麦克风区：核心瘦身 —— */
-  .mic-section { margin-bottom: 10px; }
-  .mic-status  { min-height: 32px; margin-bottom: 6px; }
-  .mic-status-ar { font-size: 12px; line-height: 1.35; }
+  .mic-section { margin-bottom: 8px; }
+  .mic-status  { min-height: 30px; margin-bottom: 5px; }
+  .mic-status-ar { font-size: 11.5px; line-height: 1.3; }
   .mic-status-zh { font-size: 10.5px; }
-  .soundwave-bar.active { height: 22px; margin-bottom: 6px; }
-  .mic-btn     { width: 82px; height: 82px; }
-  .mic-btn-icon { font-size: 22px; }
+  .soundwave-bar.active { height: 20px; margin-bottom: 5px; }
+  .mic-btn     { width: 78px; height: 78px; }
+  .mic-btn-icon { font-size: 20px; }
   .mic-btn-label { font-size: 9px; }
 
   /* —— 反馈卡片：精简（评分出现后才占空间） —— */
-  .feedback { margin-bottom: 10px; }
-  .feedback-card { padding: 13px 13px 11px; border-radius: 16px; }
+  .feedback { margin-bottom: 8px; }
+  .feedback-card { padding: 12px 12px 10px; border-radius: 16px; }
   .fb-top { margin-bottom: 4px; gap: 8px; }
-  .fb-score    { font-size: 38px; }
-  .fb-emoji    { font-size: 24px; }
-  .fb-praise-zh { font-size: 12.5px; margin-bottom: 1px; }
-  .fb-praise-ar { font-size: 11.5px; margin-bottom: 8px; line-height: 1.4; }
-  .fb-chars { gap: 5px; margin-bottom: 7px; }
-  .fb-char-hz { font-size: 20px; padding: 3px 6px; }
+  .fb-score    { font-size: 34px; }
+  .fb-emoji    { font-size: 22px; }
+  .fb-praise-zh { font-size: 12px; margin-bottom: 1px; }
+  .fb-praise-ar { font-size: 11px; margin-bottom: 6px; line-height: 1.4; }
+  .fb-chars { gap: 5px; margin-bottom: 6px; }
+  .fb-char-hz { font-size: 18px; padding: 3px 6px; }
   .fb-char-py { font-size: 9.5px; }
-  .fb-legend { margin-bottom: 7px; gap: 10px; }
+  .fb-legend { margin-bottom: 6px; gap: 10px; }
   .fb-legend-item { font-size: 9.5px; }
-  .fb-tip { padding: 7px 9px; }
+  .fb-tip { padding: 6px 8px; }
   .fb-tip-text { font-size: 11px; line-height: 1.5; }
+  /* 重试 + 分享按钮（fb-actions）变小 */
+  .fb-actions { margin-top: 8px; gap: 6px; }
+  .retry-btn, .share-btn { padding: 8px 10px; font-size: 12px; }
+  .retry-btn svg, .share-btn svg { width: 14px; height: 14px; }
 
-  /* —— "下一句"按钮：评分后变悬浮，永远在视口可见 —— */
-  /* disabled 状态（评分未出）：保持普通流式，但更紧凑 */
+  /* —— "下一句"按钮：紧凑、流式（紧跟反馈卡片之后，不悬浮） —— */
   .next-btn {
     padding: 12px 16px;
     font-size: 14px;
     border-radius: 12px;
   }
   .next-btn svg { width: 16px; height: 16px; }
-  /* enabled 状态（已评分）：变成悬浮固定按钮，跟随视口底部 */
-  body.in-practice .next-btn:not(:disabled) {
-    position: fixed;
-    bottom: 12px;
-    left: 12px;
-    right: 12px;
-    width: auto;
-    z-index: 100;
-    box-shadow: 0 8px 24px rgba(99,102,241,.45),
-                0 2px 8px rgba(99,102,241,.25);
-    /* 安全区适配（iOS 全面屏） */
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  }
-  /* 当悬浮按钮显示时，给反馈区底部留余量，让滚动时按钮不挡内容 */
-  body.in-practice .feedback-card.show { margin-bottom: 56px; }
 
-  /* —— 倒计时、分享页等弹层缩小（保留原有） —— */
+  /* —— 倒计时、分享页等弹层缩小 —— */
   .countdown-number { font-size: 110px; }
   .countdown-number.go { font-size: 60px; }
   .share-zh    { font-size: 26px; }
   .share-score-big { font-size: 52px; }
 
-  /* —— 场景选择页（保留原有） —— */
+  /* —— 场景选择页 —— */
   .pack-tile   { min-height: 130px; padding: 12px 10px; }
   .pack-emoji  { font-size: 28px; }
   .pack-name-ar { font-size: 12.5px; }
@@ -1568,10 +1581,6 @@ body.in-practice .view-practice { display: block; }
 
   /* —— 人名标签在窄屏保底字号，确保可读 —— */
   .name-tag { font-size: 10px; padding: 1.5px 4px; top: -.25em; }
-
-  /* —— body 内边距收紧（提供更多卡片宽度） —— */
-  body { padding: 8px 6px; }
-  .page-wrap { gap: 8px; }
 }
 @media (min-width: 500px) and (min-height: 700px) {
   .card-body { padding: 28px 24px 24px; }
@@ -3628,6 +3637,7 @@ body.in-practice .view-practice { display: block; }
       renderProgress();
     }, 200);
     document.getElementById('feedbackContent').classList.remove('show');
+    document.body.classList.remove('has-feedback');
     document.getElementById('nextBtn').disabled = true;
     // 恢复桌面端占位框
     const ph = document.getElementById('dtPlaceholder');
@@ -3675,6 +3685,7 @@ body.in-practice .view-practice { display: block; }
     isRecording = true;
     setMicState(MIC_STATE.LISTENING);
     document.getElementById('feedbackContent').classList.remove('show');
+    document.body.classList.remove('has-feedback');
     document.getElementById('nextBtn').disabled = true;
     const ref = LESSONS[currentIndex].zh;
     if (AZURE_SPEECH_KEY && AZURE_REGION) {
@@ -3838,7 +3849,10 @@ body.in-practice .view-practice { display: block; }
     }
 
     card.classList.add(tier);
-    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('show')));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      card.classList.add('show');
+      document.body.classList.add('has-feedback');
+    }));
     document.getElementById('nextBtn').disabled = false;
 
     // 反馈语音：鼓励语说完停顿后说建议
@@ -4173,6 +4187,7 @@ body.in-practice .view-practice { display: block; }
   function retryCurrent() {
     if (isPlaying || isRecording) return;
     document.getElementById('feedbackContent').classList.remove('show');
+    document.body.classList.remove('has-feedback');
     document.getElementById('nextBtn').disabled = true;
     // 恢复桌面端占位框
     const ph = document.getElementById('dtPlaceholder');
@@ -4414,6 +4429,7 @@ body.in-practice .view-practice { display: block; }
     document.body.classList.remove('in-practice');
     // 关闭所有反馈
     document.getElementById('feedbackContent').classList.remove('show');
+    document.body.classList.remove('has-feedback');
     setMicState(MIC_STATE.IDLE);
     // 刷新场景卡片进度
     renderPacks();
