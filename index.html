@@ -181,11 +181,76 @@ body::before {
 
 .chinese {
   font-family: var(--font-zh);
-  font-size: 36px; font-weight: 500;
+  /* clamp(): 不同视口宽度自适应字号；移动端可以更小一点，避免长句溢出 */
+  font-size: clamp(28px, 7.2vw, 36px);
+  font-weight: 500;
   color: var(--ink);
-  direction: ltr; letter-spacing: 3px;
-  line-height: 1.3; margin-bottom: 8px;
+  direction: ltr; letter-spacing: 2.5px;
+  line-height: 1.55; margin-bottom: 10px;
+  /* 中文允许在标点和空白处换行，整字不切，整个 .hz 不被拆开 */
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
+.chinese .hz {
+  /* 带角标的汉字整体不被拆开 */
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* ── HSK 等级角标（汉字右上角小数字）─────────────────── */
+/* 每个汉字用 .hz 包装，角标用 .hsk-badge 上标显示，
+   等级配色：HSK1 靛蓝 / HSK2 绿色 / HSK3 橙色。
+   三端通用，不影响声调曲线、跟读、证书等任何原功能。 */
+.hz {
+  position: relative;
+  display: inline-block;
+  padding-right: .18em; /* 给右上角角标留位 */
+}
+.hsk-badge {
+  font-family: var(--font-py);
+  font-size: .30em;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: super;
+  margin-left: .04em;
+  padding: 1.5px 3px;
+  border-radius: 5px;
+  letter-spacing: 0;
+  color: #fff;
+  position: relative;
+  top: -.05em;
+  user-select: none;
+}
+.hsk-badge.lvl1 { background: var(--indigo); }
+.hsk-badge.lvl2 { background: var(--green);  }
+.hsk-badge.lvl3 { background: var(--amber);  }
+
+/* ── 人名标识 ───────────────────────────────────────
+   连续的人名字（chars[i].name===true）之后追加【人名】小标签，
+   让阿语母语学习者一眼分辨"不是普通词汇而是专名"。 */
+.hz.is-name {
+  color: var(--violet);          /* 人名用紫色和普通字区分 */
+}
+.name-tag {
+  display: inline-block;
+  font-family: var(--font-py);
+  font-size: .26em;              /* 跟随主字号缩放 */
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--violet);
+  background: rgba(124,58,237,.10);
+  border: 1px solid rgba(124,58,237,.25);
+  border-radius: 6px;
+  padding: 2px 5px;
+  margin: 0 .25em;
+  vertical-align: middle;
+  position: relative;
+  top: -.15em;
+  white-space: nowrap;
+  user-select: none;
+}
+
 .pinyin {
   font-family: var(--font-py);
   font-size: 15px; font-weight: 600;
@@ -201,20 +266,28 @@ body::before {
   line-height: 1.5;
 }
 
-/* Hint row */
+/* Hint row — اللغة العربية (RTL) لشرح القاعدة، مع كلمات صينية مفتاحية */
 .hint-row {
   display: flex; align-items: flex-start; gap: 5px;
   margin-top: 11px; padding-top: 10px;
   border-top: 1px dashed rgba(99,102,241,.12);
-  direction: ltr; text-align: left;
+  direction: rtl; text-align: right;
+  font-family: var(--font-ar);
+}
+.hint-text {
+  font-family: var(--font-ar);
+  font-size: 12.5px; color: var(--slate);
+  line-height: 1.7;
+  flex: 1;
+}
+.hint-text strong {
+  font-family: var(--font-zh);
+  color: var(--indigo); font-weight: 600;
+  unicode-bidi: isolate;  /* 中文锚点在阿拉伯语句子里不要被排版翻转 */
+  margin: 0 2px;
+}
 }
 .hint-icon { font-size: 11px; flex-shrink: 0; margin-top: 2px; opacity: .65; }
-.hint-text {
-  font-family: var(--font-py);
-  font-size: 11.5px; color: var(--muted);
-  line-height: 1.6;
-}
-.hint-text strong { color: var(--indigo); font-weight: 600; }
 
 /* ── Listen button ──────────────────────────────────────────── */
 .listen-btn {
@@ -872,7 +945,11 @@ button:focus-visible {
   letter-spacing: 2px;
   margin-bottom: 4px;
   direction: ltr;
+  line-height: 1.4;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
+.share-zh .hz { display: inline-block; white-space: nowrap; }
 .share-py {
   font-family: var(--font-py);
   font-size: 13px; font-weight: 600;
@@ -1385,8 +1462,9 @@ body.in-practice .view-practice { display: block; }
 /* ── Mobile ─────────────────────────────────────────────────── */
 @media (max-width: 380px) {
   .card-body   { padding: 20px 16px 18px; }
-  .title       { font-size: 18px; }
-  .chinese     { font-size: 32px; }
+  .title       { font-size: 17px; }
+  /* .chinese 字号由 clamp() 控制，这里只调字距 */
+  .chinese     { letter-spacing: 2px; line-height: 1.5; }
   .mic-btn     { width: 94px; height: 94px; }
   .mic-btn-icon { font-size: 23px; }
   .fb-score    { font-size: 42px; }
@@ -1403,9 +1481,40 @@ body.in-practice .view-practice { display: block; }
   .packs-title  { font-size: 18px; }
   .cert-medal   { width: 64px; height: 64px; font-size: 32px; }
   .cert-pack-name-ar { font-size: 18px; }
+  /* 阿拉伯语释义在窄屏更紧凑 */
+  .arabic-meaning { font-size: 13.5px; line-height: 1.55; }
+  .pinyin { font-size: 14px; }
+  /* 人名标签在窄屏保底字号，确保可读 */
+  .name-tag { font-size: 10px; padding: 1.5px 4px; top: -.25em; }
 }
 @media (min-height: 700px) {
   .card-body { padding: 28px 24px 24px; }
+}
+
+/* ═════════════════════════════════════════════════════════════ */
+/*       平板 / 中型屏 TABLET (500px ~ 899px)                     */
+/*   单列布局保持，但卡片更宽、字号略大，让平板舒展                */
+/* ═════════════════════════════════════════════════════════════ */
+@media (min-width: 500px) and (max-width: 899px) {
+  .page-wrap { max-width: 560px; }
+  .card-body { padding: 28px 28px 24px; }
+  .chinese   { letter-spacing: 3px; line-height: 1.5; }
+  .arabic-meaning { font-size: 15px; }
+  .pinyin    { font-size: 16px; }
+  /* 场景卡片：2 列 */
+  .packs-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 12px 22px 24px;
+  }
+  .pack-tile { min-height: 145px; padding: 14px 12px; }
+  .pack-emoji { font-size: 34px; }
+  .pack-name-ar { font-size: 14px; }
+  .pack-name-zh { font-size: 12px; }
+  /* 阿拉伯语 hint 在平板更舒展 */
+  .hint-text { font-size: 13.5px; line-height: 1.75; }
+  /* 人名标签更明显 */
+  .name-tag { font-size: 11px; }
 }
 
 /* ═════════════════════════════════════════════════════════════ */
@@ -1491,9 +1600,21 @@ body.in-practice .view-practice { display: block; }
   .view-practice .chinese {
     font-size: 44px;
     letter-spacing: 4px;
+    line-height: 1.45;
+    /* 桌面端左列宽度有限：长句允许换行，但不破坏 .hz 整体 */
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
-  .view-practice .pinyin { font-size: 17px; }
-  .view-practice .arabic-meaning { font-size: 15.5px; }
+  .view-practice .pinyin {
+    font-size: 17px;
+    /* 拼音长串在窄列允许换行 */
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .view-practice .arabic-meaning { font-size: 15.5px; line-height: 1.7; }
+  /* 桌面端人名标签更清晰可读 */
+  .view-practice .name-tag { font-size: 12px; padding: 2.5px 7px; }
 
   /* 右侧反馈区：未触发时不要空着，给个引导占位 */
   .view-practice .feedback-card {
@@ -1552,7 +1673,14 @@ body.in-practice .view-practice { display: block; }
     padding: 30px 38px 26px;
     gap: 16px 36px;
   }
-  .view-practice .chinese { font-size: 48px; }
+  .view-practice .chinese {
+    font-size: 48px;
+    line-height: 1.4;
+    /* 大屏字号大，仍要允许换行 */
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
 }
 
 </style>
@@ -1927,327 +2055,405 @@ body.in-practice .view-practice { display: block; }
   // ═══════════════════════════════════════════════════════════════
   const PACKS = [
     {
-      id: 'greetings', nameAr: 'تحيات أساسية', nameZh: '打招呼', emoji: '👋', color: 'indigo',
-      desc: 'Greetings',
+      id: 'sc_hello', nameAr: 'التحية والتعارف', nameZh: '你好', emoji: '👋', color: 'indigo', desc: 'Greetings & Introduction',
       lessons: [
-        {
+{
           zh: '你好！', py: 'nǐ hǎo', ar: 'مرحباً!',
-          hint: { text: '<strong>好 hǎo</strong> 是第三声，声音要先低再上来。', spoken: '好这个字是第三声，声音要先低，再往上扬。' },
+          hint: { text: 'تحية يومية. <strong>好 hǎo</strong> النغمة الثالثة، الصوت ينزل ثم يصعد.', spoken: 'تحية يومية. <strong>好 hǎo</strong> النغمة الثالثة، الصوت ينزل ثم يصعد.' },
           chars: [
-            { hz: '你', py: 'nǐ',  tips: ['nǐ 是第三声，声音先低再往上。', 'n 的发音，舌尖轻触上齿龈。'] },
-            { hz: '好', py: 'hǎo', tips: ['hǎo 是第三声，像叹气一样，先低沉再上扬。', 'ao 的嘴型，从"啊"自然滑向"哦"。'] },
+            { hz: '你', py: 'nǐ', lvl: 1, tips: ['你 nǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '好', py: 'hǎo', lvl: 1, tips: ['好 hǎo 是第三声。', '声音先下来一点，再上去。'] },
           ]
-        },
-        {
+        },{
           zh: '你好吗？', py: 'nǐ hǎo ma', ar: 'كيف حالك؟',
-          hint: { text: '末尾的 <strong>吗 ma</strong> 读轻声，声音轻轻带过，像句子自然消失。', spoken: '末尾的吗字读轻声，不要用力，让声音轻轻消失就好。' },
+          hint: { text: '<strong>吗 ma</strong> في آخر الجملة لتحويل الجملة إلى سؤال.', spoken: '<strong>吗 ma</strong> في آخر الجملة لتحويل الجملة إلى سؤال.' },
           chars: [
-            { hz: '你', py: 'nǐ',  tips: ['nǐ 第三声，在"好"前会自然变成第二声。', 'n 的发音，舌尖轻触上齿龈。'] },
-            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在连读中可以读半三声。', 'ao 从"啊"滑向"哦"。'] },
-            { hz: '吗', py: 'ma',  tips: ['吗 ma 轻声，不要强调，轻轻带过。', '轻声没有固定调值，跟着句子走就好。'] },
+            { hz: '你', py: 'nǐ', lvl: 1, tips: ['你 nǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '好', py: 'hǎo', lvl: 1, tips: ['好 hǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '吗', py: 'ma', lvl: 1, tips: ['吗 ma 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-        {
-          zh: '我很好。', py: 'wǒ hěn hǎo', ar: 'أنا بخير.',
-          hint: { text: '两个第三声连读：<strong>很 hěn</strong> 在前，会自然读成第二声↗。', spoken: '很和好两个第三声连在一起，前面的很会自然变成第二声。' },
+        },{
+          zh: '我叫李明。', py: 'wǒ jiào Lǐ Míng', ar: 'اسمي لي مينغ.',
+          hint: { text: 'القالب: <strong>我叫 + الاسم</strong>.', spoken: 'القالب: <strong>我叫 + الاسم</strong>.' },
           chars: [
-            { hz: '我', py: 'wǒ',  tips: ['wǒ 第三声，在"很"前面可以读成半三声。', '嘴型圆，气流从嘴唇中间出来。'] },
-            { hz: '很', py: 'hěn', tips: ['hěn 第三声，在"好"前变成第二声，声音往上扬。', '这叫"连读变调"，是自然的普通话节奏。'] },
-            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声，在句尾读完整的第三声，先低再扬。', '句尾可以稍微强调一下。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '叫', py: 'jiào', lvl: 1, tips: ['叫 jiào 是第四声。', '声音从高一下子下来。'] },
+            { hz: '李', py: 'Lǐ', lvl: 3, name: true, tips: ['李 Lǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '明', py: 'Míng', lvl: 1, name: true, tips: ['明 Míng 是第二声。', '声音从中间一直往上。'] },
           ]
-        },
-        {
-          zh: '早上好！', py: 'zǎo shang hǎo', ar: 'صباح الخير!',
-          hint: { text: '中间的 <strong>上 shang</strong> 读轻声，<strong>sh</strong> 是翘舌音。', spoken: '上字在这里读轻声，开头的 sh 是翘舌音，舌尖要往上卷。' },
+        },{
+          zh: '我是学生。', py: 'wǒ shì xué sheng', ar: 'أنا طالب.',
+          hint: { text: 'القالب الأساسي: <strong>A 是 B</strong>. غيّر «学生» بـ «老师» أو «医生».', spoken: 'القالب الأساسي: <strong>A 是 B</strong>. غيّر «学生» بـ «老师» أو «医生».' },
           chars: [
-            { hz: '早', py: 'zǎo',   tips: ['zǎo 第三声，z 是平舌音，不要卷舌。', 'ao 韵母：从"啊"自然合向"哦"。'] },
-            { hz: '上', py: 'shang', tips: ['shang 轻声，sh 是翘舌音，舌尖往上卷。', 'ang 的鼻韵，声音从鼻腔流出。'] },
-            { hz: '好', py: 'hǎo',   tips: ['好 hǎo 第三声，先低再扬。', '和"你好"里的"好"发音一样。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '是', py: 'shì', lvl: 1, tips: ['是 shì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '学', py: 'xué', lvl: 1, tips: ['学 xué 是第二声。', '声音从中间一直往上。'] },
+            { hz: '生', py: 'sheng', lvl: 1, tips: ['生 sheng 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-        {
-          zh: '再见！', py: 'zài jiàn', ar: 'إلى اللقاء!',
-          hint: { text: '<strong>z</strong> 是平舌音，舌尖不要往上卷，和"zh"不一样。', spoken: '再字的声母 z 是平舌音，舌尖不要往上卷。' },
+        },{
+          zh: '我很好，你呢？', py: 'wǒ hěn hǎo, nǐ ne', ar: 'أنا بخير، وأنت؟',
+          hint: { text: 'الإجابة على «كيف حالك». <strong>呢 ne</strong> ترد السؤال للطرف الآخر.', spoken: 'الإجابة على «كيف حالك». <strong>呢 ne</strong> ترد السؤال للطرف الآخر.' },
           chars: [
-            { hz: '再', py: 'zài',  tips: ['zài 是第四声，声音果断往下。', 'z 是平舌音，舌尖不要卷起来。'] },
-            { hz: '见', py: 'jiàn', tips: ['jiàn 第四声，j 的发音舌面贴上颚。', 'ian 韵母，从"一"过渡到"安"。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '很', py: 'hěn', lvl: 1, tips: ['很 hěn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '好', py: 'hǎo', lvl: 1, tips: ['好 hǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '你', py: 'nǐ', lvl: 1, tips: ['你 nǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '呢', py: 'ne', lvl: 1, tips: ['呢 ne 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-      ]
-    },
-    {
-      id: 'polite', nameAr: 'كلمات اللباقة', nameZh: '礼貌用语', emoji: '🙏', color: 'rose',
-      desc: 'Politeness',
-      lessons: [
-        {
-          zh: '谢谢！', py: 'xiè xie', ar: 'شكراً!',
-          hint: { text: '<strong>谢 xiè</strong> 是第四声，声音要短而有力地往下落。', spoken: '谢字是第四声，声音从高处果断往下落，要短而有力。' },
+        },{
+          zh: '你叫什么名字？', py: 'nǐ jiào shén me míng zi', ar: 'ما اسمك؟',
+          hint: { text: 'سؤال شائع: <strong>叫什么名字</strong>. 什么 للأشياء/الأسماء.', spoken: 'سؤال شائع: <strong>叫什么名字</strong>. 什么 للأشياء/الأسماء.' },
           chars: [
-            { hz: '谢', py: 'xiè', tips: ['xiè 是第四声，声音从高往低落，像点头。', 'x 的气流从舌面吹出，不是"s"。'] },
-            { hz: '谢', py: 'xie', tips: ['第二个"谢"读轻声，像尾音轻轻带过。', '两个字连读，重音在第一个字。'] },
-          ]
-        },
-        {
-          zh: '不客气。', py: 'bú kè qi', ar: 'العفو.',
-          hint: { text: '<strong>不 bú</strong> 在第四声前变成第二声，声音要往上扬。', spoken: '不字在第四声前面会变调成第二声，声音往上扬。' },
-          chars: [
-            { hz: '不', py: 'bú', tips: ['bù 在第四声前变成 bú，往上扬。', '这是普通话里"不"的变调规则。'] },
-            { hz: '客', py: 'kè', tips: ['kè 第四声，k 要送气。', 'e 的发音像"呃"。'] },
-            { hz: '气', py: 'qi', tips: ['qi 这里读轻声，轻轻带过。', 'q 要送气，舌面送出。'] },
-          ]
-        },
-        {
-          zh: '对不起！', py: 'duì bu qǐ', ar: 'آسف / عذراً!',
-          hint: { text: '中间的 <strong>不 bu</strong> 连读时变轻声，跟着自然带过就好。', spoken: '不字在中间连读时变成轻声，不需要强调。' },
-          chars: [
-            { hz: '对', py: 'duì', tips: ['duì 第四声，d 不送气，轻轻爆破。', 'ui 韵母，嘴唇先圆后展开。'] },
-            { hz: '不', py: 'bu',  tips: ['在"起"前读轻声，自然带过。', 'b 不送气，比"p"更轻柔。'] },
-            { hz: '起', py: 'qǐ',  tips: ['qǐ 第三声，q 要送气。', 'q 是舌面音，c 是舌尖音。'] },
-          ]
-        },
-        {
-          zh: '没关系！', py: 'méi guān xi', ar: 'لا بأس!',
-          hint: { text: '<strong>没 méi</strong> 是第二声，声音要从低到高。', spoken: '没字是第二声，声音从低处往高走。' },
-          chars: [
-            { hz: '没', py: 'méi',  tips: ['méi 第二声，声调从低到高。', 'ei 韵母：嘴角从"e"拉向"i"。'] },
-            { hz: '关', py: 'guān', tips: ['guān 第一声，平稳不起伏。', 'g 不送气，轻轻爆破。'] },
-            { hz: '系', py: 'xi',   tips: ['xi 在这里读轻声，轻轻带过。', 'x 的气流从舌面吹出。'] },
-          ]
-        },
-        {
-          zh: '请进。', py: 'qǐng jìn', ar: 'تفضّل بالدخول.',
-          hint: { text: '<strong>请 qǐng</strong> 第三声，声音先低再上。', spoken: '请字第三声，声音先低再往上扬。' },
-          chars: [
-            { hz: '请', py: 'qǐng', tips: ['qǐng 第三声，先低再扬。', 'ing 的鼻韵母，舌根抵上颚。'] },
-            { hz: '进', py: 'jìn',  tips: ['jìn 第四声，往下落。', 'j 舌面贴上颚。'] },
+            { hz: '你', py: 'nǐ', lvl: 1, tips: ['你 nǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '叫', py: 'jiào', lvl: 1, tips: ['叫 jiào 是第四声。', '声音从高一下子下来。'] },
+            { hz: '什', py: 'shén', lvl: 1, tips: ['什 shén 是第二声。', '声音从中间一直往上。'] },
+            { hz: '么', py: 'me', lvl: 1, tips: ['么 me 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '名', py: 'míng', lvl: 1, tips: ['名 míng 是第二声。', '声音从中间一直往上。'] },
+            { hz: '字', py: 'zi', lvl: 1, tips: ['字 zi 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
         },
       ]
     },
     {
-      id: 'self', nameAr: 'تعريف عن النفس', nameZh: '介绍自己', emoji: '👤', color: 'amber',
-      desc: 'About me',
+      id: 'sc_family', nameAr: 'الأسرة والأشخاص', nameZh: '家人', emoji: '👨‍👩‍👧', color: 'rose', desc: 'My Family',
       lessons: [
-        {
-          zh: '我是学生。', py: 'wǒ shì xuésheng', ar: 'أنا طالب.',
-          hint: { text: '<strong>是 shì</strong> 是翘舌音 + 第四声，要果断往下。', spoken: '是字是翘舌音，第四声要果断往下落。' },
+{
+          zh: '我没有妹妹。', py: 'wǒ méi yǒu mèi mei', ar: 'ليس لي أخت صغيرة.',
+          hint: { text: 'ينفي «有» بـ <strong>没</strong>، لا تقل «不有».', spoken: 'ينفي «有» بـ <strong>没</strong>، لا تقل «不有».' },
           chars: [
-            { hz: '我', py: 'wǒ',     tips: ['wǒ 第三声，嘴型圆。', '句首可以读成半三声。'] },
-            { hz: '是', py: 'shì',    tips: ['shì 第四声 + 翘舌。', '舌尖往上卷，气流从舌面送出。'] },
-            { hz: '学', py: 'xué',    tips: ['xué 第二声，往上扬。', 'x 是舌面音。'] },
-            { hz: '生', py: 'sheng',  tips: ['sheng 在这里读轻声。', 'sh 翘舌，ng 鼻音收尾。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '没', py: 'méi', lvl: 1, tips: ['没 méi 是第二声。', '声音从中间一直往上。'] },
+            { hz: '有', py: 'yǒu', lvl: 1, tips: ['有 yǒu 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '妹', py: 'mèi', lvl: 1, tips: ['妹 mèi 是第四声。', '声音从高一下子下来。'] },
+            { hz: '妹', py: 'mei', lvl: 1, tips: ['妹 mei 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-        {
-          zh: '我叫…', py: 'wǒ jiào …', ar: 'اسمي …',
-          hint: { text: '<strong>叫 jiào</strong> 第四声，声音从高往低果断落下。', spoken: '叫字第四声，声音从高处果断落下。' },
+        },{
+          zh: '我家有五个人。', py: 'wǒ jiā yǒu wǔ ge rén', ar: 'في عائلتي خمسة أشخاص.',
+          hint: { text: 'القالب: <strong>… 有 …</strong> للوجود. عدد + 个.', spoken: 'القالب: <strong>… 有 …</strong> للوجود. عدد + 个.' },
           chars: [
-            { hz: '我', py: 'wǒ',   tips: ['wǒ 第三声，嘴型圆。', '半三声开口。'] },
-            { hz: '叫', py: 'jiào', tips: ['jiào 第四声，从高往低。', 'iao 三合元音，从 i 滑向 a 再到 o。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '家', py: 'jiā', lvl: 1, tips: ['家 jiā 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '有', py: 'yǒu', lvl: 1, tips: ['有 yǒu 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '五', py: 'wǔ', lvl: 1, tips: ['五 wǔ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '个', py: 'ge', lvl: 1, tips: ['个 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '人', py: 'rén', lvl: 1, tips: ['人 rén 是第二声。', '声音从中间一直往上。'] },
           ]
-        },
-        {
-          zh: '我爱中文。', py: 'wǒ ài Zhōngwén', ar: 'أنا أحب اللغة الصينية.',
-          hint: { text: '<strong>中 zhōng</strong> 是第一声，声音要平稳，不要起伏。', spoken: '中字是第一声，声音要保持平稳。' },
+        },{
+          zh: '我有一个哥哥。', py: 'wǒ yǒu yí ge gē ge', ar: 'لي أخ كبير.',
+          hint: { text: '<strong>一</strong> أمام نغمة رابعة («个») تتحول إلى <strong>yí</strong>.', spoken: '<strong>一</strong> أمام نغمة رابعة («个») تتحول إلى <strong>yí</strong>.' },
           chars: [
-            { hz: '我', py: 'wǒ',    tips: ['wǒ 第三声，嘴型圆。', '半三声开口。'] },
-            { hz: '爱', py: 'ài',    tips: ['ài 第四声，从高降下来。', 'ai 从"啊"滑向"i"。'] },
-            { hz: '中', py: 'zhōng', tips: ['zhōng 第一声，平稳。', 'zh 翘舌音。'] },
-            { hz: '文', py: 'wén',   tips: ['wén 第二声，往上走。', 'en 鼻韵母。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '有', py: 'yǒu', lvl: 1, tips: ['有 yǒu 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '一', py: 'yí', lvl: 1, tips: ['一 yí 是第二声。', '声音从中间一直往上。'] },
+            { hz: '个', py: 'ge', lvl: 1, tips: ['个 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '哥', py: 'gē', lvl: 1, tips: ['哥 gē 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '哥', py: 'ge', lvl: 1, tips: ['哥 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-        {
-          zh: '我在学习中文。', py: 'wǒ zài xuéxí Zhōngwén', ar: 'أنا أتعلم اللغة الصينية.',
-          hint: { text: '<strong>学 xué</strong> 是第二声，声音要从中间往上扬。', spoken: '学字第二声，声音要从中间位置往上扬。' },
+        },{
+          zh: '我爸爸是医生。', py: 'wǒ bà ba shì yī shēng', ar: 'أبي طبيب.',
+          hint: { text: 'لتعريف المهنة. 爸爸 الثانية نغمة خفيفة.', spoken: 'لتعريف المهنة. 爸爸 الثانية نغمة خفيفة.' },
           chars: [
-            { hz: '我', py: 'wǒ',    tips: ['wǒ 半三声，嘴型圆。', '句首开口。'] },
-            { hz: '在', py: 'zài',   tips: ['zài 第四声。', 'z 平舌。'] },
-            { hz: '学', py: 'xué',   tips: ['xué 第二声，往上扬。', 'x 舌面音。'] },
-            { hz: '习', py: 'xí',    tips: ['xí 第二声，连读稍轻。', 'i 嘴角向两侧。'] },
-            { hz: '中', py: 'zhōng', tips: ['zhōng 第一声平稳。', 'zh 翘舌。'] },
-            { hz: '文', py: 'wén',   tips: ['wén 第二声往上。', 'en 鼻韵母。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '爸', py: 'bà', lvl: 1, tips: ['爸 bà 是第四声。', '声音从高一下子下来。'] },
+            { hz: '爸', py: 'ba', lvl: 1, tips: ['爸 ba 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '是', py: 'shì', lvl: 1, tips: ['是 shì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '医', py: 'yī', lvl: 1, tips: ['医 yī 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '生', py: 'shēng', lvl: 1, tips: ['生 shēng 是第一声。', '从头到末，声音一样高。'] },
           ]
-        },
-        {
-          zh: '认识你很高兴。', py: 'rènshi nǐ hěn gāoxìng', ar: 'تشرفت بمعرفتك.',
-          hint: { text: '<strong>认 rèn</strong> 是翘舌音，舌尖卷起来。', spoken: '认字是翘舌音，舌尖往上卷。' },
+        },{
+          zh: '我妈妈不工作。', py: 'wǒ mā ma bù gōng zuò', ar: 'أمي لا تعمل.',
+          hint: { text: 'النفي: <strong>不 + فعل</strong> للعادات.', spoken: 'النفي: <strong>不 + فعل</strong> للعادات.' },
           chars: [
-            { hz: '认', py: 'rèn',   tips: ['rèn 第四声 + 翘舌。', 'r 舌尖卷起，气流摩擦。'] },
-            { hz: '识', py: 'shi',   tips: ['shi 轻声 + 翘舌。', 'sh 舌尖往上。'] },
-            { hz: '你', py: 'nǐ',    tips: ['nǐ 第三声。', '舌尖触上齿龈。'] },
-            { hz: '很', py: 'hěn',   tips: ['hěn 第三声。', '在"高"前可以读半三声。'] },
-            { hz: '高', py: 'gāo',   tips: ['gāo 第一声平稳。', 'g 不送气。'] },
-            { hz: '兴', py: 'xìng',  tips: ['xìng 第四声。', 'ing 鼻韵母。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '妈', py: 'mā', lvl: 1, tips: ['妈 mā 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '妈', py: 'ma', lvl: 1, tips: ['妈 ma 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '不', py: 'bù', lvl: 1, tips: ['不 bù 是第四声。', '声音从高一下子下来。'] },
+            { hz: '工', py: 'gōng', lvl: 1, tips: ['工 gōng 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '作', py: 'zuò', lvl: 1, tips: ['作 zuò 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '我的弟弟八岁。', py: 'wǒ de dì di bā suì', ar: 'أخي الصغير عمره ثماني سنوات.',
+          hint: { text: 'العمر يأتي مباشرة بعد الشخص: <strong>… 几岁</strong> للسؤال.', spoken: 'العمر يأتي مباشرة بعد الشخص: <strong>… 几岁</strong> للسؤال.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '的', py: 'de', lvl: 1, tips: ['的 de 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '弟', py: 'dì', lvl: 1, tips: ['弟 dì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '弟', py: 'di', lvl: 1, tips: ['弟 di 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '八', py: 'bā', lvl: 1, tips: ['八 bā 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '岁', py: 'suì', lvl: 1, tips: ['岁 suì 是第四声。', '声音从高一下子下来。'] },
           ]
         },
       ]
     },
     {
-      id: 'restaurant', nameAr: 'في المطعم', nameZh: '在餐厅', emoji: '🍜', color: 'green',
-      desc: 'At the restaurant',
+      id: 'sc_school', nameAr: 'في المدرسة', nameZh: '在学校', emoji: '🏫', color: 'amber', desc: 'At School',
       lessons: [
-        {
-          zh: '我想喝水。', py: 'wǒ xiǎng hē shuǐ', ar: 'أريد أن أشرب الماء.',
-          hint: { text: '<strong>水 shuǐ</strong> 是第三声，<strong>sh</strong> 要翘舌。', spoken: '水字第三声，开头的 sh 要翘舌。' },
+{
+          zh: '我在学校。', py: 'wǒ zài xué xiào', ar: 'أنا في المدرسة.',
+          hint: { text: '<strong>在 + مكان</strong> لتحديد الموقع.', spoken: '<strong>在 + مكان</strong> لتحديد الموقع.' },
           chars: [
-            { hz: '我', py: 'wǒ',    tips: ['wǒ 半三声。', '嘴型圆。'] },
-            { hz: '想', py: 'xiǎng', tips: ['xiǎng 第三声，x 舌面音。', 'iang 鼻音收尾。'] },
-            { hz: '喝', py: 'hē',    tips: ['hē 第一声，平稳。', 'h 从喉咙送气。'] },
-            { hz: '水', py: 'shuǐ',  tips: ['shuǐ 第三声，sh 翘舌。', 'ui 嘴唇先圆后展。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '在', py: 'zài', lvl: 1, tips: ['在 zài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '学', py: 'xué', lvl: 1, tips: ['学 xué 是第二声。', '声音从中间一直往上。'] },
+            { hz: '校', py: 'xiào', lvl: 1, tips: ['校 xiào 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '今天没有课。', py: 'jīn tiān méi yǒu kè', ar: 'لا يوجد حصص اليوم.',
+          hint: { text: 'نفي الوجود بـ <strong>没有</strong>.', spoken: 'نفي الوجود بـ <strong>没有</strong>.' },
+          chars: [
+            { hz: '今', py: 'jīn', lvl: 1, tips: ['今 jīn 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '天', py: 'tiān', lvl: 1, tips: ['天 tiān 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '没', py: 'méi', lvl: 1, tips: ['没 méi 是第二声。', '声音从中间一直往上。'] },
+            { hz: '有', py: 'yǒu', lvl: 1, tips: ['有 yǒu 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '课', py: 'kè', lvl: 1, tips: ['课 kè 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '我们正在上课。', py: 'wǒ men zhèng zài shàng kè', ar: 'نحن في الحصة الآن.',
+          hint: { text: '<strong>正在 + فعل</strong> = الفعل يحدث الآن.', spoken: '<strong>正在 + فعل</strong> = الفعل يحدث الآن.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '们', py: 'men', lvl: 1, tips: ['们 men 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '正', py: 'zhèng', lvl: 1, tips: ['正 zhèng 是第四声。', '声音从高一下子下来。'] },
+            { hz: '在', py: 'zài', lvl: 1, tips: ['在 zài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '上', py: 'shàng', lvl: 1, tips: ['上 shàng 是第四声。', '声音从高一下子下来。'] },
+            { hz: '课', py: 'kè', lvl: 1, tips: ['课 kè 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '老师在写汉字。', py: 'lǎo shī zài xiě Hàn zì', ar: 'المعلم يكتب الحروف الصينية.',
+          hint: { text: 'فعل مستمر مع 在 وحدها (بدون 正).', spoken: 'فعل مستمر مع 在 وحدها (بدون 正).' },
+          chars: [
+            { hz: '老', py: 'lǎo', lvl: 1, tips: ['老 lǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '师', py: 'shī', lvl: 1, tips: ['师 shī 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '在', py: 'zài', lvl: 1, tips: ['在 zài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '写', py: 'xiě', lvl: 1, tips: ['写 xiě 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '汉', py: 'Hàn', lvl: 1, tips: ['汉 Hàn 是第四声。', '声音从高一下子下来。'] },
+            { hz: '字', py: 'zì', lvl: 1, tips: ['字 zì 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '我的同学很好。', py: 'wǒ de tóng xué hěn hǎo', ar: 'زملائي طيبون جداً.',
+          hint: { text: '<strong>很 + صفة</strong> هو الشكل الافتراضي للصفات في الصينية.', spoken: '<strong>很 + صفة</strong> هو الشكل الافتراضي للصفات في الصينية.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '的', py: 'de', lvl: 1, tips: ['的 de 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '同', py: 'tóng', lvl: 1, tips: ['同 tóng 是第二声。', '声音从中间一直往上。'] },
+            { hz: '学', py: 'xué', lvl: 1, tips: ['学 xué 是第二声。', '声音从中间一直往上。'] },
+            { hz: '很', py: 'hěn', lvl: 1, tips: ['很 hěn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '好', py: 'hǎo', lvl: 1, tips: ['好 hǎo 是第三声。', '声音先下来一点，再上去。'] },
+          ]
+        },{
+          zh: '我去学校学习汉语。', py: 'wǒ qù xué xiào xué xí Hàn yǔ', ar: 'أذهب إلى المدرسة لأتعلّم الصينية.',
+          hint: { text: '<strong>去 + مكان + فعل</strong> = الذهاب لفعل شيء.', spoken: '<strong>去 + مكان + فعل</strong> = الذهاب لفعل شيء.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '去', py: 'qù', lvl: 1, tips: ['去 qù 是第四声。', '声音从高一下子下来。'] },
+            { hz: '学', py: 'xué', lvl: 1, tips: ['学 xué 是第二声。', '声音从中间一直往上。'] },
+            { hz: '校', py: 'xiào', lvl: 1, tips: ['校 xiào 是第四声。', '声音从高一下子下来。'] },
+            { hz: '学', py: 'xué', lvl: 1, tips: ['学 xué 是第二声。', '声音从中间一直往上。'] },
+            { hz: '习', py: 'xí', lvl: 1, tips: ['习 xí 是第二声。', '声音从中间一直往上。'] },
+            { hz: '汉', py: 'Hàn', lvl: 1, tips: ['汉 Hàn 是第四声。', '声音从高一下子下来。'] },
+            { hz: '语', py: 'yǔ', lvl: 1, tips: ['语 yǔ 是第三声。', '声音先下来一点，再上去。'] },
           ]
         },
-        {
-          zh: '请给我菜单。', py: 'qǐng gěi wǒ càidān', ar: 'القائمة من فضلك.',
-          hint: { text: '<strong>请 qǐng</strong> + <strong>给 gěi</strong> 都是第三声，前一个变第二声。', spoken: '请和给都是第三声，前面的请会变成第二声。' },
-          chars: [
-            { hz: '请', py: 'qǐng', tips: ['qǐng 在"给"前变第二声。', '舌面音。'] },
-            { hz: '给', py: 'gěi',  tips: ['gěi 第三声。', 'g 不送气。'] },
-            { hz: '我', py: 'wǒ',   tips: ['wǒ 半三声。', '嘴型圆。'] },
-            { hz: '菜', py: 'cài',  tips: ['cài 第四声 + 平舌。', 'c 送气，舌尖抵上齿背。'] },
-            { hz: '单', py: 'dān',  tips: ['dān 第一声。', 'an 鼻韵母。'] },
-          ]
-        },
-        {
-          zh: '多少钱？', py: 'duōshao qián', ar: 'كم السعر؟',
-          hint: { text: '<strong>少 shao</strong> 这里读轻声，<strong>钱 qián</strong> 第二声往上。', spoken: '少字读轻声，钱字第二声往上扬。' },
-          chars: [
-            { hz: '多', py: 'duō',  tips: ['duō 第一声平稳。', 'd 不送气。'] },
-            { hz: '少', py: 'shao', tips: ['这里读轻声。', 'sh 翘舌。'] },
-            { hz: '钱', py: 'qián', tips: ['qián 第二声往上。', 'q 送气。'] },
-          ]
-        },
-        {
+      ]
+    },
+    {
+      id: 'sc_eat', nameAr: 'في المطعم', nameZh: '在饭店', emoji: '🍜', color: 'green', desc: 'At the Restaurant',
+      lessons: [
+{
           zh: '很好吃！', py: 'hěn hǎo chī', ar: 'لذيذ جداً!',
-          hint: { text: '<strong>吃 chī</strong> 是翘舌 + 第一声，声音平稳。', spoken: '吃字是翘舌音，第一声要平稳。' },
+          hint: { text: '<strong>好 + فعل</strong> يصنع صفات: 好吃 / 好看 / 好听.', spoken: '<strong>好 + فعل</strong> يصنع صفات: 好吃 / 好看 / 好听.' },
           chars: [
-            { hz: '很', py: 'hěn', tips: ['hěn 在"好"前变第二声。', '连读变调。'] },
-            { hz: '好', py: 'hǎo', tips: ['hǎo 第三声。', 'ao 从"啊"滑"哦"。'] },
-            { hz: '吃', py: 'chī', tips: ['chī 第一声 + 翘舌。', 'ch 舌尖往上卷。'] },
+            { hz: '很', py: 'hěn', lvl: 1, tips: ['很 hěn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '好', py: 'hǎo', lvl: 1, tips: ['好 hǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '吃', py: 'chī', lvl: 1, tips: ['吃 chī 是第一声。', '从头到末，声音一样高。'] },
           ]
-        },
-        {
-          zh: '我吃饱了。', py: 'wǒ chī bǎo le', ar: 'لقد شبعت.',
-          hint: { text: '末尾的 <strong>了 le</strong> 读轻声，表示状态变化。', spoken: '了字读轻声，表示已经发生。' },
+        },{
+          zh: '我想喝茶。', py: 'wǒ xiǎng hē chá', ar: 'أريد أن أشرب الشاي.',
+          hint: { text: '<strong>想 + فعل</strong> = الرغبة في فعل شيء.', spoken: '<strong>想 + فعل</strong> = الرغبة في فعل شيء.' },
           chars: [
-            { hz: '我', py: 'wǒ',  tips: ['wǒ 半三声。', '嘴型圆。'] },
-            { hz: '吃', py: 'chī', tips: ['chī 翘舌第一声。', 'ch 舌尖往上。'] },
-            { hz: '饱', py: 'bǎo', tips: ['bǎo 第三声。', 'b 不送气。'] },
-            { hz: '了', py: 'le',  tips: ['le 轻声，语气助词。', '轻轻带过。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '想', py: 'xiǎng', lvl: 1, tips: ['想 xiǎng 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '喝', py: 'hē', lvl: 1, tips: ['喝 hē 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '茶', py: 'chá', lvl: 1, tips: ['茶 chá 是第二声。', '声音从中间一直往上。'] },
           ]
-        },
-      ]
-    },
-    {
-      id: 'shopping', nameAr: 'التسوّق', nameZh: '购物', emoji: '🛍️', color: 'cyan',
-      desc: 'Shopping',
-      lessons: [
-        {
-          zh: '这个多少钱？', py: 'zhège duōshao qián', ar: 'بكم هذا؟',
-          hint: { text: '<strong>这 zhè</strong> 是翘舌 + 第四声。', spoken: '这字翘舌音，第四声往下落。' },
+        },{
+          zh: '我吃饱了。', py: 'wǒ chī bǎo le', ar: 'شبعت.',
+          hint: { text: '<strong>了</strong> في آخر الجملة = الفعل تمّ / الحال تغيّر.', spoken: '<strong>了</strong> في آخر الجملة = الفعل تمّ / الحال تغيّر.' },
           chars: [
-            { hz: '这', py: 'zhè',  tips: ['zhè 翘舌 + 第四声。', 'zh 舌尖卷。'] },
-            { hz: '个', py: 'ge',   tips: ['ge 轻声。', '量词，轻轻带过。'] },
-            { hz: '多', py: 'duō',  tips: ['duō 第一声。', 'd 不送气。'] },
-            { hz: '少', py: 'shao', tips: ['shao 轻声 + 翘舌。', 'sh 舌尖往上。'] },
-            { hz: '钱', py: 'qián', tips: ['qián 第二声。', 'q 送气。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '吃', py: 'chī', lvl: 1, tips: ['吃 chī 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '饱', py: 'bǎo', lvl: 3, tips: ['饱 bǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '了', py: 'le', lvl: 1, tips: ['了 le 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
-        },
-        {
-          zh: '太贵了。', py: 'tài guì le', ar: 'غالٍ جداً.',
-          hint: { text: '<strong>太 tài</strong> + <strong>贵 guì</strong> 都是第四声，要果断有力。', spoken: '太和贵都是第四声，要果断往下。' },
+        },{
+          zh: '请给我菜单。', py: 'qǐng gěi wǒ cài dān', ar: 'القائمة من فضلك.',
+          hint: { text: '<strong>请</strong> في بداية الطلب = «من فضلك».', spoken: '<strong>请</strong> في بداية الطلب = «من فضلك».' },
           chars: [
-            { hz: '太', py: 'tài', tips: ['tài 第四声 + 送气。', 't 比 d 更强。'] },
-            { hz: '贵', py: 'guì', tips: ['guì 第四声。', 'ui 嘴唇先圆后展。'] },
-            { hz: '了', py: 'le',  tips: ['le 轻声，语气助词。', '轻轻带过。'] },
+            { hz: '请', py: 'qǐng', lvl: 1, tips: ['请 qǐng 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '给', py: 'gěi', lvl: 1, tips: ['给 gěi 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '菜', py: 'cài', lvl: 1, tips: ['菜 cài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '单', py: 'dān', lvl: 3, tips: ['单 dān 是第一声。', '从头到末，声音一样高。'] },
           ]
-        },
-        {
-          zh: '便宜一点。', py: 'piányi yìdiǎn', ar: 'أرخص قليلاً.',
-          hint: { text: '<strong>一 yì</strong> 在第三声前读第二声，连读变调。', spoken: '一字在第三声前变成第二声。' },
+        },{
+          zh: '我要一碗米饭。', py: 'wǒ yào yì wǎn mǐ fàn', ar: 'أريد صحن أرز.',
+          hint: { text: '<strong>要 + شيء</strong> = طلب مباشر. 一 + 碗 = صحن واحد.', spoken: '<strong>要 + شيء</strong> = طلب مباشر. 一 + 碗 = صحن واحد.' },
           chars: [
-            { hz: '便', py: 'pián',  tips: ['pián 第二声 + 送气。', 'p 比 b 更强。'] },
-            { hz: '宜', py: 'yi',    tips: ['yi 轻声。', '轻轻带过。'] },
-            { hz: '一', py: 'yì',    tips: ['一在第三声前变第二声。', '变调规则。'] },
-            { hz: '点', py: 'diǎn',  tips: ['diǎn 第三声。', 'ian 嘴型从"一"到"安"。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '要', py: 'yào', lvl: 1, tips: ['要 yào 是第四声。', '声音从高一下子下来。'] },
+            { hz: '一', py: 'yì', lvl: 1, tips: ['一 yì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '碗', py: 'wǎn', lvl: 3, tips: ['碗 wǎn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '米', py: 'mǐ', lvl: 1, tips: ['米 mǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '饭', py: 'fàn', lvl: 1, tips: ['饭 fàn 是第四声。', '声音从高一下子下来。'] },
           ]
-        },
-        {
-          zh: '我要买这个。', py: 'wǒ yào mǎi zhège', ar: 'أريد شراء هذا.',
-          hint: { text: '<strong>买 mǎi</strong> 是第三声，声音先低再上。', spoken: '买字第三声，先低再上扬。' },
+        },{
+          zh: '这个菜怎么样？', py: 'zhè ge cài zěn me yàng', ar: 'كيف هذا الطبق؟',
+          hint: { text: '<strong>怎么样</strong> = «كيف؟» لتقييم شيء.', spoken: '<strong>怎么样</strong> = «كيف؟» لتقييم شيء.' },
           chars: [
-            { hz: '我', py: 'wǒ',   tips: ['wǒ 半三声。', '嘴型圆。'] },
-            { hz: '要', py: 'yào',  tips: ['yào 第四声。', '从高往下。'] },
-            { hz: '买', py: 'mǎi',  tips: ['mǎi 第三声。', 'ai 从"啊"到"i"。'] },
-            { hz: '这', py: 'zhè',  tips: ['zhè 翘舌 + 第四声。', 'zh 舌尖卷。'] },
-            { hz: '个', py: 'ge',   tips: ['ge 轻声。', '量词。'] },
-          ]
-        },
-        {
-          zh: '可以刷卡吗？', py: 'kěyǐ shuākǎ ma', ar: 'هل أستطيع الدفع بالبطاقة؟',
-          hint: { text: '<strong>刷 shuā</strong> 是翘舌 + 第一声。', spoken: '刷字翘舌音，第一声要平稳。' },
-          chars: [
-            { hz: '可', py: 'kě',   tips: ['kě 第三声。', 'k 送气。'] },
-            { hz: '以', py: 'yǐ',   tips: ['yǐ 第三声。', '嘴角向两侧。'] },
-            { hz: '刷', py: 'shuā', tips: ['shuā 第一声 + 翘舌。', 'sh 舌尖往上。'] },
-            { hz: '卡', py: 'kǎ',   tips: ['kǎ 第三声。', 'k 送气。'] },
-            { hz: '吗', py: 'ma',   tips: ['ma 轻声，疑问语气。', '轻轻带过。'] },
+            { hz: '这', py: 'zhè', lvl: 1, tips: ['这 zhè 是第四声。', '声音从高一下子下来。'] },
+            { hz: '个', py: 'ge', lvl: 1, tips: ['个 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '菜', py: 'cài', lvl: 1, tips: ['菜 cài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '怎', py: 'zěn', lvl: 1, tips: ['怎 zěn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '么', py: 'me', lvl: 1, tips: ['么 me 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '样', py: 'yàng', lvl: 1, tips: ['样 yàng 是第四声。', '声音从高一下子下来。'] },
           ]
         },
       ]
     },
     {
-      id: 'numbers', nameAr: 'الأرقام والوقت', nameZh: '数字时间', emoji: '🔢', color: 'purple',
-      desc: 'Numbers & time',
+      id: 'sc_shop', nameAr: 'التسوّق', nameZh: '买东西', emoji: '🛍️', color: 'cyan', desc: 'Shopping',
       lessons: [
-        {
-          zh: '一二三。', py: 'yī èr sān', ar: 'واحد، اثنان، ثلاثة.',
-          hint: { text: '<strong>一 yī</strong> 单独说是第一声，连读时常变调。', spoken: '一字单独读是第一声，连读时会变调。' },
+{
+          zh: '太贵了！', py: 'tài guì le', ar: 'غالٍ جداً!',
+          hint: { text: '<strong>太 … 了</strong> للتعجّب من شدة الصفة.', spoken: '<strong>太 … 了</strong> للتعجّب من شدة الصفة.' },
           chars: [
-            { hz: '一', py: 'yī',  tips: ['yī 第一声，平稳。', '单独读不变调。'] },
-            { hz: '二', py: 'èr',  tips: ['èr 第四声 + 卷舌。', 'er 舌尖卷起。'] },
-            { hz: '三', py: 'sān', tips: ['sān 第一声 + 平舌。', 's 舌尖抵下齿。'] },
+            { hz: '太', py: 'tài', lvl: 1, tips: ['太 tài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '贵', py: 'guì', lvl: 1, tips: ['贵 guì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '了', py: 'le', lvl: 1, tips: ['了 le 读轻声。', '声音很短，跟着上一个字读出来。'] },
+          ]
+        },{
+          zh: '这个多少钱？', py: 'zhè ge duō shao qián', ar: 'بكم هذا؟',
+          hint: { text: '<strong>多少</strong> للأعداد الكبيرة (للسعر، الكمية).', spoken: '<strong>多少</strong> للأعداد الكبيرة (للسعر، الكمية).' },
+          chars: [
+            { hz: '这', py: 'zhè', lvl: 1, tips: ['这 zhè 是第四声。', '声音从高一下子下来。'] },
+            { hz: '个', py: 'ge', lvl: 1, tips: ['个 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '多', py: 'duō', lvl: 1, tips: ['多 duō 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '少', py: 'shao', lvl: 1, tips: ['少 shao 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '钱', py: 'qián', lvl: 1, tips: ['钱 qián 是第二声。', '声音从中间一直往上。'] },
+          ]
+        },{
+          zh: '一共多少钱？', py: 'yí gòng duō shao qián', ar: 'كم المجموع؟',
+          hint: { text: 'تضاف <strong>一共</strong> للسؤال عن المجموع الكلي.', spoken: 'تضاف <strong>一共</strong> للسؤال عن المجموع الكلي.' },
+          chars: [
+            { hz: '一', py: 'yí', lvl: 1, tips: ['一 yí 是第二声。', '声音从中间一直往上。'] },
+            { hz: '共', py: 'gòng', lvl: 3, tips: ['共 gòng 是第四声。', '声音从高一下子下来。'] },
+            { hz: '多', py: 'duō', lvl: 1, tips: ['多 duō 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '少', py: 'shao', lvl: 1, tips: ['少 shao 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '钱', py: 'qián', lvl: 1, tips: ['钱 qián 是第二声。', '声音从中间一直往上。'] },
+          ]
+        },{
+          zh: '我要买这个。', py: 'wǒ yào mǎi zhè ge', ar: 'أريد أن أشتري هذا.',
+          hint: { text: '<strong>要 + فعل</strong> للنية / الإرادة.', spoken: '<strong>要 + فعل</strong> للنية / الإرادة.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '要', py: 'yào', lvl: 1, tips: ['要 yào 是第四声。', '声音从高一下子下来。'] },
+            { hz: '买', py: 'mǎi', lvl: 1, tips: ['买 mǎi 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '这', py: 'zhè', lvl: 1, tips: ['这 zhè 是第四声。', '声音从高一下子下来。'] },
+            { hz: '个', py: 'ge', lvl: 1, tips: ['个 ge 读轻声。', '声音很短，跟着上一个字读出来。'] },
+          ]
+        },{
+          zh: '你们卖水果吗？', py: 'nǐ men mài shuǐ guǒ ma', ar: 'هل تبيعون فاكهة؟',
+          hint: { text: 'سؤال نعم/لا: <strong>… 吗 ؟</strong>.', spoken: 'سؤال نعم/لا: <strong>… 吗 ؟</strong>.' },
+          chars: [
+            { hz: '你', py: 'nǐ', lvl: 1, tips: ['你 nǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '们', py: 'men', lvl: 1, tips: ['们 men 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '卖', py: 'mài', lvl: 1, tips: ['卖 mài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '水', py: 'shuǐ', lvl: 1, tips: ['水 shuǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '果', py: 'guǒ', lvl: 1, tips: ['果 guǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '吗', py: 'ma', lvl: 1, tips: ['吗 ma 读轻声。', '声音很短，跟着上一个字读出来。'] },
+          ]
+        },{
+          zh: '能便宜一点儿吗？', py: 'néng pián yi yì diǎn r ma', ar: 'هل يمكن أن يكون أرخص قليلاً؟',
+          hint: { text: '<strong>能 + فعل + 吗</strong> = طلب مهذّب للإمكانية.', spoken: '<strong>能 + فعل + 吗</strong> = طلب مهذّب للإمكانية.' },
+          chars: [
+            { hz: '能', py: 'néng', lvl: 1, tips: ['能 néng 是第二声。', '声音从中间一直往上。'] },
+            { hz: '便', py: 'pián', lvl: 1, tips: ['便 pián 是第二声。', '声音从中间一直往上。'] },
+            { hz: '宜', py: 'yi', lvl: 1, tips: ['宜 yi 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '一', py: 'yì', lvl: 1, tips: ['一 yì 是第四声。', '声音从高一下子下来。'] },
+            { hz: '点', py: 'diǎn', lvl: 1, tips: ['点 diǎn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '儿', py: 'r', lvl: 1, tips: ['儿 r 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '吗', py: 'ma', lvl: 1, tips: ['吗 ma 读轻声。', '声音很短，跟着上一个字读出来。'] },
           ]
         },
-        {
-          zh: '现在几点？', py: 'xiànzài jǐ diǎn', ar: 'كم الساعة الآن؟',
-          hint: { text: '<strong>几 jǐ</strong> + <strong>点 diǎn</strong> 都是第三声，前一个变第二声。', spoken: '几和点都是第三声，前面的几变成第二声。' },
+      ]
+    },
+    {
+      id: 'sc_time_go', nameAr: 'الوقت والذهاب', nameZh: '时间和出门', emoji: '🕐', color: 'purple', desc: 'Time & Going Out',
+      lessons: [
+{
+          zh: '明天见！', py: 'míng tiān jiàn', ar: 'إلى لقاء الغد!',
+          hint: { text: 'تحية وداع شائعة. <strong>… 见</strong> = «نلتقي عند …».', spoken: 'تحية وداع شائعة. <strong>… 见</strong> = «نلتقي عند …».' },
           chars: [
-            { hz: '现', py: 'xiàn', tips: ['xiàn 第四声。', 'x 舌面音。'] },
-            { hz: '在', py: 'zài',  tips: ['zài 第四声 + 平舌。', 'z 舌尖抵下齿。'] },
-            { hz: '几', py: 'jǐ',   tips: ['jǐ 在"点"前变第二声。', '连读变调。'] },
-            { hz: '点', py: 'diǎn', tips: ['diǎn 第三声。', 'ian 从"一"到"安"。'] },
+            { hz: '明', py: 'míng', lvl: 1, tips: ['明 míng 是第二声。', '声音从中间一直往上。'] },
+            { hz: '天', py: 'tiān', lvl: 1, tips: ['天 tiān 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '见', py: 'jiàn', lvl: 1, tips: ['见 jiàn 是第四声。', '声音从高一下子下来。'] },
           ]
-        },
-        {
-          zh: '今天天气很好。', py: 'jīn tiān tiān qì hěn hǎo', ar: 'الطقس جميل اليوم.',
-          hint: { text: '<strong>很 hěn</strong> + <strong>好 hǎo</strong> 都是第三声，连读时前面变第二声。', spoken: '很和好都是第三声，前面的很会变成第二声。' },
+        },{
+          zh: '现在几点？', py: 'xiàn zài jǐ diǎn', ar: 'كم الساعة الآن؟',
+          hint: { text: '<strong>几 + 点</strong> = «كم الساعة».', spoken: '<strong>几 + 点</strong> = «كم الساعة».' },
           chars: [
-            { hz: '今', py: 'jīn',  tips: ['jīn 第一声。', 'j 舌面贴上颚。'] },
-            { hz: '天', py: 'tiān', tips: ['tiān 第一声。', 'ian 从"一"到"安"。'] },
-            { hz: '天', py: 'tiān', tips: ['第二个"天"在连读中稍轻。', '相同字连读后字可轻。'] },
-            { hz: '气', py: 'qì',   tips: ['qì 第四声。', 'q 送气。'] },
-            { hz: '很', py: 'hěn',  tips: ['hěn 在"好"前变第二声。', '自然变调。'] },
-            { hz: '好', py: 'hǎo',  tips: ['hǎo 第三声。', '句尾完整。'] },
+            { hz: '现', py: 'xiàn', lvl: 1, tips: ['现 xiàn 是第四声。', '声音从高一下子下来。'] },
+            { hz: '在', py: 'zài', lvl: 1, tips: ['在 zài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '几', py: 'jǐ', lvl: 1, tips: ['几 jǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '点', py: 'diǎn', lvl: 1, tips: ['点 diǎn 是第三声。', '声音先下来一点，再上去。'] },
           ]
-        },
-        {
-          zh: '明天见。', py: 'míngtiān jiàn', ar: 'إلى الغد.',
-          hint: { text: '<strong>明 míng</strong> 是第二声，声音从低往高。', spoken: '明字第二声，声音从低往高走。' },
+        },{
+          zh: '现在八点半。', py: 'xiàn zài bā diǎn bàn', ar: 'الآن الثامنة والنصف.',
+          hint: { text: '<strong>… 点 半</strong> = «… والنصف».', spoken: '<strong>… 点 半</strong> = «… والنصف».' },
           chars: [
-            { hz: '明', py: 'míng', tips: ['míng 第二声。', 'ing 鼻韵母。'] },
-            { hz: '天', py: 'tiān', tips: ['tiān 第一声平稳。', 'ian 嘴型。'] },
-            { hz: '见', py: 'jiàn', tips: ['jiàn 第四声。', 'j 舌面音。'] },
+            { hz: '现', py: 'xiàn', lvl: 1, tips: ['现 xiàn 是第四声。', '声音从高一下子下来。'] },
+            { hz: '在', py: 'zài', lvl: 1, tips: ['在 zài 是第四声。', '声音从高一下子下来。'] },
+            { hz: '八', py: 'bā', lvl: 1, tips: ['八 bā 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '点', py: 'diǎn', lvl: 1, tips: ['点 diǎn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '半', py: 'bàn', lvl: 1, tips: ['半 bàn 是第四声。', '声音从高一下子下来。'] },
           ]
-        },
-        {
-          zh: '我九点起床。', py: 'wǒ jiǔ diǎn qǐchuáng', ar: 'أستيقظ الساعة التاسعة.',
-          hint: { text: '<strong>九 jiǔ</strong> + <strong>点 diǎn</strong> 第三声连读，前一个变第二声。', spoken: '九和点都是第三声，连起来时前面的九变成第二声。' },
+        },{
+          zh: '我坐出租车去。', py: 'wǒ zuò chū zū chē qù', ar: 'أذهب بسيارة الأجرة.',
+          hint: { text: 'وسيلة الذهاب: <strong>坐 + مركبة + 去</strong>.', spoken: 'وسيلة الذهاب: <strong>坐 + مركبة + 去</strong>.' },
           chars: [
-            { hz: '我', py: 'wǒ',     tips: ['wǒ 半三声。', '嘴型圆。'] },
-            { hz: '九', py: 'jiǔ',    tips: ['jiǔ 在"点"前变第二声。', 'iu 嘴型从"i"到"u"。'] },
-            { hz: '点', py: 'diǎn',   tips: ['diǎn 第三声。', 'ian 嘴型。'] },
-            { hz: '起', py: 'qǐ',     tips: ['qǐ 第三声 + 送气。', 'q 舌面音。'] },
-            { hz: '床', py: 'chuáng', tips: ['chuáng 第二声 + 翘舌。', 'ch 舌尖卷。'] },
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '坐', py: 'zuò', lvl: 1, tips: ['坐 zuò 是第四声。', '声音从高一下子下来。'] },
+            { hz: '出', py: 'chū', lvl: 1, tips: ['出 chū 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '租', py: 'zū', lvl: 1, tips: ['租 zū 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '车', py: 'chē', lvl: 1, tips: ['车 chē 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '去', py: 'qù', lvl: 1, tips: ['去 qù 是第四声。', '声音从高一下子下来。'] },
+          ]
+        },{
+          zh: '我早上七点起床。', py: 'wǒ zǎo shang qī diǎn qǐ chuáng', ar: 'أستيقظ السابعة صباحاً.',
+          hint: { text: 'ترتيب الوقت: <strong>الوقت + الفعل</strong>.', spoken: 'ترتيب الوقت: <strong>الوقت + الفعل</strong>.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '早', py: 'zǎo', lvl: 1, tips: ['早 zǎo 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '上', py: 'shang', lvl: 1, tips: ['上 shang 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '七', py: 'qī', lvl: 1, tips: ['七 qī 是第一声。', '从头到末，声音一样高。'] },
+            { hz: '点', py: 'diǎn', lvl: 1, tips: ['点 diǎn 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '起', py: 'qǐ', lvl: 1, tips: ['起 qǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '床', py: 'chuáng', lvl: 1, tips: ['床 chuáng 是第二声。', '声音从中间一直往上。'] },
+          ]
+        },{
+          zh: '我喜欢走路，也喜欢坐车。', py: 'wǒ xǐ huan zǒu lù, yě xǐ huan zuò chē', ar: 'أحب المشي، وأحب ركوب السيارة أيضاً.',
+          hint: { text: '<strong>也</strong> = «أيضاً»، توضع قبل الفعل المكرّر.', spoken: '<strong>也</strong> = «أيضاً»، توضع قبل الفعل المكرّر.' },
+          chars: [
+            { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '喜', py: 'xǐ', lvl: 1, tips: ['喜 xǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '欢', py: 'huan', lvl: 1, tips: ['欢 huan 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '走', py: 'zǒu', lvl: 2, tips: ['走 zǒu 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '路', py: 'lù', lvl: 2, tips: ['路 lù 是第四声。', '声音从高一下子下来。'] },
+            { hz: '也', py: 'yě', lvl: 1, tips: ['也 yě 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '喜', py: 'xǐ', lvl: 1, tips: ['喜 xǐ 是第三声。', '声音先下来一点，再上去。'] },
+            { hz: '欢', py: 'huan', lvl: 1, tips: ['欢 huan 读轻声。', '声音很短，跟着上一个字读出来。'] },
+            { hz: '坐', py: 'zuò', lvl: 1, tips: ['坐 zuò 是第四声。', '声音从高一下子下来。'] },
+            { hz: '车', py: 'chē', lvl: 1, tips: ['车 chē 是第一声。', '从头到末，声音一样高。'] },
           ]
         },
       ]
@@ -2901,12 +3107,69 @@ body.in-practice .view-practice { display: block; }
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  渲染带 HSK 等级角标的汉字
+  //  每个汉字包成 <span class="hz">字<sup class="hsk-badge lvlN">N</sup></span>
+  //  HSK1 → ¹  HSK2 → ²  HSK3 → ³（汉字右上角，配色区分）
+  //  - 标点和空白原样保留
+  //  - chars 数组缺失时回退到 textContent
+  // ═══════════════════════════════════════════════════════════════
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+      {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+    ));
+  }
+  const HSK_SUP = { 1:'¹', 2:'²', 3:'³' };
+  function renderZhWithBadges(zh, chars) {
+    if (!Array.isArray(chars) || chars.length === 0) return escHtml(zh);
+    // 按 chars 顺序匹配汉字，标点/空白原样输出
+    let html = '';
+    let ci = 0;
+    // 先识别连续的人名字段：相邻多个 chars[i].name === true 视为一个人名块
+    const nameRanges = [];   // [startCi, endCi]（包含两端，按 chars 索引）
+    {
+      let i = 0;
+      while (i < chars.length) {
+        if (chars[i].name) {
+          let j = i;
+          while (j + 1 < chars.length && chars[j+1].name) j++;
+          nameRanges.push([i, j]);
+          i = j + 1;
+        } else i++;
+      }
+    }
+    function nameTagFor(ci) {
+      // 如果 ci 是某个 nameRange 的末尾，则在该字 span 之后追加【人名】标签
+      for (const [a, b] of nameRanges) {
+        if (ci === b) return '<span class="name-tag" aria-label="اسم">【人名】</span>';
+      }
+      return '';
+    }
+
+    for (const ch of zh) {
+      const isHan = /[\u4e00-\u9fff]/.test(ch);
+      if (isHan && ci < chars.length && chars[ci].hz === ch) {
+        const lvl = chars[ci].lvl;
+        const badge = (lvl >= 1 && lvl <= 3)
+          ? `<sup class="hsk-badge lvl${lvl}">${HSK_SUP[lvl]||lvl}</sup>`
+          : '';
+        const isName = chars[ci].name === true;
+        const cls = 'hz' + (isName ? ' is-name' : '');
+        html += `<span class="${cls}">${escHtml(ch)}${badge}</span>` + nameTagFor(ci);
+        ci++;
+      } else {
+        html += escHtml(ch);
+      }
+    }
+    return html;
+  }
+
   function showSentence() {
     const box = document.getElementById('sentenceBox');
     box.classList.add('changing');
     setTimeout(() => {
       const lesson = LESSONS[currentIndex];
-      document.getElementById('chinese').textContent = lesson.zh;
+      document.getElementById('chinese').innerHTML  = renderZhWithBadges(lesson.zh, lesson.chars);
       document.getElementById('pinyin').textContent  = lesson.py;
       document.getElementById('meaning').textContent = lesson.ar;
       const hintEl  = document.getElementById('hintText');
@@ -3066,23 +3329,24 @@ body.in-practice .view-practice { display: block; }
   // ═══════════════════════════════════════════════════════════════
   //  反馈展示
   // ═══════════════════════════════════════════════════════════════
+  // 反馈语全部使用 HSK 1-3 级范围内的字词
   const praiseLines = {
     excellent: [
-      { zh: '太棒了，你的发音很自然！',         ar: 'ممتاز! نطقك جميل جداً.' },
-      { zh: '非常好，声调也很准确！',           ar: 'رائع! النطق والنبرة كلاهما صحيحان.' },
-      { zh: '说得真好，像中文母语者！',         ar: 'أحسنت! تتحدث مثل أهل اللغة.' },
-      { zh: '完美！你学得很快，继续！',         ar: 'مثالي! أنت تتعلم بسرعة كبيرة.' },
+      { zh: '说得很好，发音很自然！',           ar: 'ممتاز! نطقك جميل جداً.' },
+      { zh: '很好，声调也很对！',               ar: 'رائع! النطق والنبرة كلاهما صحيحان.' },
+      { zh: '说得真好，像中国人一样！',         ar: 'أحسنت! تتحدث مثل أهل اللغة.' },
+      { zh: '太好了，你学得很快！',             ar: 'مثالي! أنت تتعلم بسرعة كبيرة.' },
     ],
     good: [
-      { zh: '很接近了，再注意一下声调。',       ar: 'جيد جداً، انتبه للنغمة قليلاً.' },
-      { zh: '不错！慢慢来，越来越好。',         ar: 'جيد! ستتحسن مع التدرب.' },
-      { zh: '有进步！再练一遍就更好了。',       ar: 'تقدمت! جرب مرة أخرى.' },
-      { zh: '差一点点，再来一次吧！',           ar: 'تقريباً! حاول مرة أخرى.' },
+      { zh: '很接近了，再听听声调。',           ar: 'جيد جداً، انتبه للنغمة قليلاً.' },
+      { zh: '不错！多练几次会更好。',           ar: 'جيد! ستتحسن مع التدرب.' },
+      { zh: '有进步！再来一次吧。',             ar: 'تقدمت! جرب مرة أخرى.' },
+      { zh: '差一点，再来一次！',               ar: 'تقريباً! حاول مرة أخرى.' },
     ],
     tryAgain: [
-      { zh: '没关系，我们慢慢来，再试一次。',   ar: 'لا بأس، حاول مرة أخرى ببطء.' },
-      { zh: '先听一遍，再跟着说，你可以的。',   ar: 'استمع أولاً ثم اتبعني، أنت قادر.' },
-      { zh: '不着急，我们再来一次！',           ar: 'لا تستعجل، حاول مجدداً.' },
+      { zh: '没关系，我们再来一次。',           ar: 'لا بأس، حاول مرة أخرى ببطء.' },
+      { zh: '先听一遍，再跟着说。',             ar: 'استمع أولاً ثم اتبعني، أنت قادر.' },
+      { zh: '不要着急，我们再来一次！',         ar: 'لا تستعجل، حاول مجدداً.' },
       { zh: '没事，多练几次就好了。',           ar: 'لا بأس، التكرار يصنع الإتقان.' },
     ],
   };
@@ -3486,7 +3750,7 @@ body.in-practice .view-practice { display: block; }
   // ═══════════════════════════════════════════════════════════════
   function openShare() {
     const lesson = LESSONS[currentIndex];
-    document.getElementById('shareZh').textContent    = lesson.zh;
+    document.getElementById('shareZh').innerHTML      = renderZhWithBadges(lesson.zh, lesson.chars);
     document.getElementById('sharePy').textContent    = lesson.py;
     document.getElementById('shareScore').textContent = _lastScore;
     document.getElementById('shareOverlay').classList.add('show');
