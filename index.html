@@ -1460,20 +1460,104 @@ body.in-practice .view-practice { display: block; }
 .unlock-toast-icon { font-size: 18px; }
 
 /* ── Mobile ─────────────────────────────────────────────────── */
-@media (max-width: 380px) {
-  .card-body   { padding: 20px 16px 18px; }
-  .title       { font-size: 17px; }
-  /* .chinese 字号由 clamp() 控制，这里只调字距 */
-  .chinese     { letter-spacing: 2px; line-height: 1.5; }
-  .mic-btn     { width: 94px; height: 94px; }
-  .mic-btn-icon { font-size: 23px; }
-  .fb-score    { font-size: 42px; }
+/* 范围扩到 499px：覆盖所有手机视口（iPhone/Android），不仅是窄屏。
+   目标：练习页面在移动端一屏可见，"下一句"按钮无需滚动即可点到。 */
+@media (max-width: 499px) {
+  /* —— 整体瘦身：卡片内边距收紧 —— */
+  .card-body   { padding: 16px 14px 14px; }
+
+  /* —— 顶部状态栏：更紧凑 —— */
+  .top-stats { margin-bottom: 10px; gap: 8px; padding: 0 2px; }
+  .streak-pill, .daily-stars { font-size: 11px; padding: 4px 9px; border-radius: 12px; }
+  .streak-icon { font-size: 12px; }
+  .daily-star { font-size: 12px; }
+
+  /* —— 标题区：缩小并紧贴 —— */
+  .header      { margin-bottom: 12px; }
+  .title       { font-size: 17px; line-height: 1.3; }
+  .subtitle    { margin-top: 2px; font-size: 10.5px; }
+  .current-pack-tag { margin-top: 6px; padding: 3px 9px; font-size: 11.5px; }
+
+  /* —— 进度点：更紧凑 —— */
+  .progress { margin-bottom: 11px; gap: 4px; }
+  .progress-dot { width: 16px; height: 3px; }
+  .progress-dot.active { width: 22px; }
+
+  /* —— 句子框：核心瘦身区，padding 与 margin 都收紧 —— */
+  .sentence-box { padding: 14px 14px 12px; margin-bottom: 11px; border-radius: 16px; }
+  /* .chinese 字号由 clamp() 控制，这里只调字距和行高，压缩垂直高度 */
+  .chinese     { letter-spacing: 1.8px; line-height: 1.4; margin-bottom: 6px; }
+  .pinyin      { font-size: 14px; margin-bottom: 6px; line-height: 1.3; }
+  .arabic-meaning { font-size: 13.5px; line-height: 1.5; padding-top: 7px; }
+  .hint-row { margin-top: 7px; padding-top: 7px; gap: 4px; }
+  .hint-text { font-size: 12px; line-height: 1.55; }
+  .hint-icon { font-size: 10px; }
+  /* 声调图按钮：默认折叠（max-height:0），按钮本身收紧 */
+  .tone-toggle { margin-top: 6px; padding: 3px 8px; font-size: 10px; }
+
+  /* —— 听力按钮 + 速度按钮：更紧凑 —— */
+  .listen-row { margin-bottom: 10px; gap: 6px; }
+  .listen-btn { padding: 9px 14px; font-size: 13px; border-radius: 12px; margin-bottom: 0; }
+  .listen-btn svg { width: 15px; height: 15px; }
+  .speed-btn   { width: 46px; font-size: 11px; padding: 9px 0; }
+
+  /* —— 麦克风区：核心瘦身 —— */
+  .mic-section { margin-bottom: 10px; }
+  .mic-status  { min-height: 32px; margin-bottom: 6px; }
+  .mic-status-ar { font-size: 12px; line-height: 1.35; }
+  .mic-status-zh { font-size: 10.5px; }
+  .soundwave-bar.active { height: 22px; margin-bottom: 6px; }
+  .mic-btn     { width: 82px; height: 82px; }
+  .mic-btn-icon { font-size: 22px; }
+  .mic-btn-label { font-size: 9px; }
+
+  /* —— 反馈卡片：精简（评分出现后才占空间） —— */
+  .feedback { margin-bottom: 10px; }
+  .feedback-card { padding: 13px 13px 11px; border-radius: 16px; }
+  .fb-top { margin-bottom: 4px; gap: 8px; }
+  .fb-score    { font-size: 38px; }
+  .fb-emoji    { font-size: 24px; }
+  .fb-praise-zh { font-size: 12.5px; margin-bottom: 1px; }
+  .fb-praise-ar { font-size: 11.5px; margin-bottom: 8px; line-height: 1.4; }
+  .fb-chars { gap: 5px; margin-bottom: 7px; }
+  .fb-char-hz { font-size: 20px; padding: 3px 6px; }
+  .fb-char-py { font-size: 9.5px; }
+  .fb-legend { margin-bottom: 7px; gap: 10px; }
+  .fb-legend-item { font-size: 9.5px; }
+  .fb-tip { padding: 7px 9px; }
+  .fb-tip-text { font-size: 11px; line-height: 1.5; }
+
+  /* —— "下一句"按钮：评分后变悬浮，永远在视口可见 —— */
+  /* disabled 状态（评分未出）：保持普通流式，但更紧凑 */
+  .next-btn {
+    padding: 12px 16px;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+  .next-btn svg { width: 16px; height: 16px; }
+  /* enabled 状态（已评分）：变成悬浮固定按钮，跟随视口底部 */
+  body.in-practice .next-btn:not(:disabled) {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(99,102,241,.45),
+                0 2px 8px rgba(99,102,241,.25);
+    /* 安全区适配（iOS 全面屏） */
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  /* 当悬浮按钮显示时，给反馈区底部留余量，让滚动时按钮不挡内容 */
+  body.in-practice .feedback-card.show { margin-bottom: 56px; }
+
+  /* —— 倒计时、分享页等弹层缩小（保留原有） —— */
   .countdown-number { font-size: 110px; }
   .countdown-number.go { font-size: 60px; }
   .share-zh    { font-size: 26px; }
   .share-score-big { font-size: 52px; }
-  .streak-pill, .daily-stars { font-size: 11px; padding: 5px 10px; }
-  .speed-btn   { width: 50px; font-size: 11px; }
+
+  /* —— 场景选择页（保留原有） —— */
   .pack-tile   { min-height: 130px; padding: 12px 10px; }
   .pack-emoji  { font-size: 28px; }
   .pack-name-ar { font-size: 12.5px; }
@@ -1481,13 +1565,15 @@ body.in-practice .view-practice { display: block; }
   .packs-title  { font-size: 18px; }
   .cert-medal   { width: 64px; height: 64px; font-size: 32px; }
   .cert-pack-name-ar { font-size: 18px; }
-  /* 阿拉伯语释义在窄屏更紧凑 */
-  .arabic-meaning { font-size: 13.5px; line-height: 1.55; }
-  .pinyin { font-size: 14px; }
-  /* 人名标签在窄屏保底字号，确保可读 */
+
+  /* —— 人名标签在窄屏保底字号，确保可读 —— */
   .name-tag { font-size: 10px; padding: 1.5px 4px; top: -.25em; }
+
+  /* —— body 内边距收紧（提供更多卡片宽度） —— */
+  body { padding: 8px 6px; }
+  .page-wrap { gap: 8px; }
 }
-@media (min-height: 700px) {
+@media (min-width: 500px) and (min-height: 700px) {
   .card-body { padding: 28px 24px 24px; }
 }
 
