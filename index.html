@@ -2,7 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- P0#7: 允许用户缩放页面，HSK1-3 学生可放大查看小字号汉字、ruby 拼音、HSK 角标 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>一口拼 · نطق صيني سليم</title>
 
 <!-- PWA: add to home screen -->
@@ -15,7 +16,8 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- P1-δ: IBM Plex Sans Arabic 加 700 权重（证书包名、celebrate 标题等场景使用 font-weight:700） -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -175,6 +177,9 @@ body::before {
 .progress {
   display: flex; justify-content: center;
   gap: 5px; margin-bottom: 18px; flex-wrap: wrap;
+  /* P2#19: 进度点从左到右增长（done 在左、active 居中、未完成在右），
+     不被父容器 RTL 翻转，保持时间感知一致 */
+  direction: ltr;
 }
 .progress-dot {
   width: 20px; height: 3px; border-radius: 2px;
@@ -193,7 +198,20 @@ body::before {
   text-align: center;
   margin-bottom: 16px;
   transition: opacity .25s, transform .25s;
+  /* P1#15: 保底 min-height，避免短句↔长句切换时整页跳动；
+     220px 覆盖 7 字 + ruby 拼音 + 阿语释义 + hint 行的常见组合
+     用 flex column + center 让短句也垂直居中，而不是黏顶留白 */
+  min-height: 220px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
 }
+/* 让块级子元素仍撑满宽度（保留原 text-align:center 效果），
+   按钮 .tone-toggle 等 inline 元素按内容宽度水平居中 */
+.sentence-box > .chinese,
+.sentence-box > .pinyin,
+.sentence-box > .arabic-meaning,
+.sentence-box > .hint-row,
+.sentence-box > .tone-curves { width: 100%; }
+.sentence-box > .tone-toggle { align-self: center; }
 .sentence-box.changing { opacity: 0; transform: translateY(8px); }
 
 .chinese {
@@ -226,10 +244,13 @@ body::before {
 }
 .chinese ruby rt.hz-py {
   font-family: var(--font-py);
-  font-size: .34em;
-  font-weight: 600;
+  /* #2 字号下限抬高：移动端 clamp 后保证声调符号 ǎ/ě/ǔ 仍清晰可辨 */
+  font-size: .38em;
+  /* 字重 600→700，Nunito 700 的声调符号笔画更清晰 */
+  font-weight: 700;
   color: var(--indigo);
-  letter-spacing: .2px;
+  /* letter-spacing 清零，避免短音节看着发散 */
+  letter-spacing: 0;
   line-height: 1.1;
   margin-bottom: 2px;
   /* rt 默认 ltr，避免在 RTL 容器中被翻转 */
@@ -254,6 +275,9 @@ body::before {
   /* 绝对定位：浮在 .hz 容器的右上角，靠近汉字而避开 ruby 拼音 */
   position: absolute;
   top: 50%;          /* 与汉字垂直中线对齐，再用 transform 偏到右上 */
+  /* P2#18: 这里的 right 必须是物理"右"（汉字字框的右上角）。
+     因为 .chinese 强制 direction: ltr，所以即便 RTL 容器内 right 也指物理右。
+     维护提示：勿改为 inset-inline-end，否则会跟随父容器方向翻转，角标会移到字的左上角。 */
   right: -.18em;
   transform: translateY(-90%);
   font-family: var(--font-py);
@@ -309,7 +333,10 @@ body::before {
   margin-bottom: 10px; line-height: 1.4;
 }
 .arabic-meaning {
-  font-size: 14px; font-weight: 400;
+  /* #1 显式 RTL：阿语释义是 HSK1-3 学生最依赖的"语义锚点"，方向必须稳定 */
+  direction: rtl; text-align: right;
+  /* 字号 14→15：不能比拼音还小，阿语翻译需有足够视觉权重 */
+  font-size: 15px; font-weight: 400;
   color: var(--slate);
   padding-top: 10px;
   border-top: 1px solid rgba(99,102,241,.1);
@@ -365,6 +392,16 @@ body::before {
   color: #fff;
   box-shadow: 0 4px 20px rgba(99,102,241,.35);
 }
+/* P1#9: 首次进入 pack 未解锁 TTS 时给按钮加一次性呼吸提示，引导手势 */
+.listen-btn.attention {
+  border-color: var(--indigo-mid);
+  color: var(--indigo);
+  animation: listenBreath 1.6s ease-in-out 2;
+}
+@keyframes listenBreath {
+  0%,100% { box-shadow: 0 0 0 0    rgba(99,102,241,.0); }
+  50%      { box-shadow: 0 0 0 6px rgba(99,102,241,.18); }
+}
 .sound-waves {
   display: inline-flex; align-items: center; gap: 2px; height: 14px;
 }
@@ -381,6 +418,60 @@ body::before {
   50%      { transform: scaleY(1);   }
 }
 
+/* P1#12: 麦克风权限被拒后的折叠式阿语指引 */
+.mic-perm-help {
+  width: 100%;
+  margin-top: 10px;
+  background: rgba(239,68,68,.06);
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 12px;
+  direction: rtl; text-align: right;
+}
+.mic-perm-help[hidden] { display: none; }
+.mic-perm-help-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  font-family: var(--font-ar);
+  font-size: 12.5px; font-weight: 600;
+  color: #b91c1c;
+  cursor: pointer;
+  text-align: right;
+}
+.mic-perm-help-toggle .chev {
+  font-size: 12px;
+  transition: transform .2s;
+}
+.mic-perm-help-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.mic-perm-help-body {
+  max-height: 0; overflow: hidden;
+  transition: max-height .3s ease;
+}
+.mic-perm-help.open .mic-perm-help-body { max-height: 260px; }
+.mic-perm-help-list {
+  margin: 0; padding: 4px 22px 12px 12px;
+  font-family: var(--font-ar);
+  font-size: 12px; line-height: 1.7;
+  color: var(--slate);
+}
+.mic-perm-help-list li { margin-bottom: 5px; }
+.mic-perm-help-list code {
+  font-family: var(--font-py);
+  background: rgba(0,0,0,.06);
+  padding: 0 4px; border-radius: 3px;
+  font-size: 11px;
+  unicode-bidi: isolate;
+}
+.mic-perm-help-list strong {
+  font-family: var(--font-py);
+  color: #b91c1c; font-weight: 700;
+  unicode-bidi: isolate;
+  margin-left: 4px;
+}
+
 /* ── Mic section ────────────────────────────────────────────── */
 .mic-section {
   display: flex; flex-direction: column; align-items: center;
@@ -394,8 +485,10 @@ body::before {
   line-height: 1.5; transition: color .3s;
 }
 .mic-status-zh {
-  font-family: var(--font-py);
-  font-size: 11px; color: var(--muted);
+  /* P1-α: 内容是中文（"点击麦克风…"、"正在听你说…"等）→ 用中文字体 */
+  font-family: var(--font-zh);
+  /* #4 字号从 11→12px：中文本身是学习对象，不能比阿语状态文案小太多 */
+  font-size: 12px; color: var(--muted);
   direction: ltr; transition: color .3s;
 }
 
@@ -466,7 +559,7 @@ body::before {
 
 .mic-btn-icon  { font-size: 26px; line-height: 1; }
 .mic-btn-label {
-  font-family: var(--font-py);
+  font-family: var(--font-ar);
   font-size: 9.5px; font-weight: 600;
   opacity: .88; letter-spacing: .2px; text-align: center;
 }
@@ -522,6 +615,27 @@ body::before {
   40%      { transform: translateX(5px); }
   60%      { transform: translateX(-3px); }
   80%      { transform: translateX(3px); }
+}
+
+/* P1#11: 纯 mock 模式角标 — 显式告知学生当前评分为演示，不是真实评估 */
+.fb-demo-tag {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  width: fit-content;
+  margin: 0 auto 6px;
+  padding: 3px 9px;
+  background: rgba(245,158,11,.12);
+  border: 1px dashed rgba(245,158,11,.5);
+  border-radius: 999px;
+  font-family: var(--font-ar);
+  font-size: 10.5px; font-weight: 600;
+  color: #92400e;
+  letter-spacing: .2px;
+}
+.fb-demo-tag[hidden] { display: none; }
+.fb-demo-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--amber);
+  flex-shrink: 0;
 }
 
 /* ── Feedback card ──────────────────────────────────────────── */
@@ -610,9 +724,11 @@ body::before {
 .fb-char.miss .fb-char-hz { color: #991b1b; background: #fee2e2; }
 
 /* Legend */
+/* P0#6: 改 RTL — 阿语图例文字"جيد / 好"应当从右向左读，
+   配合 RTL 后色块会自然落在阿语文字"前侧"（视觉上的右侧）。 */
 .fb-legend {
   display: flex; justify-content: center; gap: 12px;
-  direction: ltr; margin-bottom: 10px;
+  direction: rtl; margin-bottom: 10px;
 }
 .fb-legend-item {
   display: flex; align-items: center; gap: 4px;
@@ -636,7 +752,8 @@ body::before {
 }
 .fb-tip-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
 .fb-tip-text {
-  font-family: var(--font-py);
+  /* P1-α: tip 内容来自 chars[i].tips，是中文 → 必须用中文字体，避免 Nunito 字形回退 */
+  font-family: var(--font-zh);
   font-size: 11.5px; color: var(--slate);
   line-height: 1.6;
 }
@@ -664,6 +781,20 @@ body::before {
 .next-btn:disabled {
   background: var(--line); color: var(--muted);
   box-shadow: none; cursor: not-allowed; transform: none;
+}
+/* #10 低分（try-again）时的视觉降级：保留可点击，但不再抢焦点，
+       让"再试一次"自然成为视觉重点，避免学生没改进就划过去 */
+.next-btn.muted {
+  background: #fff;
+  color: var(--slate);
+  border: 1.5px solid var(--line);
+  box-shadow: none;
+}
+.next-btn.muted:hover {
+  border-color: var(--indigo-mid);
+  color: var(--indigo);
+  box-shadow: 0 2px 10px rgba(99,102,241,.1);
+  transform: none;
 }
 .next-btn svg { width: 17px; height: 17px; }
 [dir="rtl"] .next-btn svg { transform: scaleX(-1); }
@@ -706,6 +837,13 @@ button:focus-visible {
   100% { transform: scale(1); }
 }
 .streak-icon { font-size: 14px; line-height: 1; }
+/* P0#2: 单位 يوم 使用阿语字体，size/letter-spacing 与原 DAYS 视觉等价 */
+.streak-unit {
+  font-family: var(--font-ar);
+  font-size: 10px;
+  opacity: .75;
+  unicode-bidi: isolate;
+}
 
 .daily-stars {
   display: inline-flex; align-items: center; gap: 4px;
@@ -785,10 +923,12 @@ button:focus-visible {
   border-radius: 14px;
   color: var(--muted);
   font-family: var(--font-py);
-  font-size: 12px; font-weight: 700;
+  /* 14px：乌龟 emoji 在此尺寸下视觉重量与未激活时的 0.6× 数字接近 */
+  font-size: 14px; font-weight: 700;
   cursor: pointer;
   transition: border-color .2s, background .2s, color .2s;
   letter-spacing: -.5px;
+  line-height: 1;
 }
 .speed-btn.active {
   border-color: var(--indigo);
@@ -806,10 +946,29 @@ button:focus-visible {
   background: rgba(30,27,75,.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  display: none; align-items: center; justify-content: center;
+  /* P0#5: 改用列布局，让 hint 文本垂直对齐在数字下方 */
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
   z-index: 100;
+  cursor: pointer;
 }
 .countdown-overlay.show { display: flex; }
+/* P0#5: 取消提示文案，淡入显示，不抢数字焦点 */
+.countdown-hint {
+  margin-top: 28px;
+  font-family: var(--font-ar);
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,.78);
+  letter-spacing: .3px;
+  user-select: none;
+  pointer-events: none;
+  animation: hintFade .4s ease .15s both;
+}
+@keyframes hintFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
 .countdown-number {
   font-family: var(--font-py);
   font-size: 140px; font-weight: 800;
@@ -824,6 +983,8 @@ button:focus-visible {
   100% { transform: scale(.7);  opacity: 0; }
 }
 .countdown-number.go {
+  /* P2#16: "ابدأ!" 使用阿语字体，配合渐变 text-clip 也能正常渲染 */
+  font-family: var(--font-ar);
   font-size: 80px;
   background: linear-gradient(135deg, #10b981, #34d399);
   -webkit-background-clip: text;
@@ -1063,7 +1224,9 @@ button:focus-visible {
 
 /* ── TTS 引擎指示徽章 ───────────────────────────────────────── */
 /* 固定在视口左下角的小标识，告诉用户/开发者当前使用哪个 TTS 引擎 */
+/* #16 生产环境默认隐藏，仅 URL 带 ?debug=1 时由 JS 加 body.debug-mode 显示 */
 .tts-engine-badge {
+  display: none;
   position: fixed;
   bottom: 12px;
   left: 12px;
@@ -1091,6 +1254,8 @@ button:focus-visible {
   margin-right: 3px;
   vertical-align: -1px;
 }
+/* #16 仅 URL 带 ?debug=1 时显示 TTS 引擎徽章 */
+body.debug-mode .tts-engine-badge { display: inline-block; }
 
 /* ═════════════════════════════════════════════════════════════ */
 /*                    场景包选择 SCENARIO PACKS                    */
@@ -1120,9 +1285,9 @@ body.in-practice .view-practice { display: block; }
   font-size: 20px; font-weight: 600;
   color: var(--ink); line-height: 1.35;
   letter-spacing: -.2px;
-  margin-bottom: 4px;
 }
 .packs-subtitle {
+  margin-top: 4px;
   font-size: 11px; font-weight: 500; letter-spacing: .6px;
   color: var(--muted); text-transform: uppercase;
   font-family: var(--font-py);
@@ -1464,6 +1629,11 @@ body.viewing-subs .state-subs { display: block; }
   transition: transform .2s;
   font-size: 9px;
 }
+/* P0#1: 阿语片段单独使用阿语字体，避免回退到 Nunito 缺字形 */
+.tone-toggle .tone-toggle-label {
+  font-family: var(--font-ar);
+  unicode-bidi: isolate;
+}
 .tone-toggle.open .chev { transform: rotate(180deg); }
 
 .tone-curves {
@@ -1595,6 +1765,12 @@ body.viewing-subs .state-subs { display: block; }
   opacity: .85;
   letter-spacing: .3px;
 }
+/* P1-β: 360px 及以下窄屏（主流 Android），证书 modal 内三列 stat-label
+   "المعدّل · AVG" 等阿英混排标签可能擦边溢出，收紧间距和字号防截断 */
+@media (max-width: 360px) {
+  .cert-stats { gap: 10px; }
+  .cert-stat-label { font-size: 9px; letter-spacing: 0; }
+}
 
 .cert-actions {
   display: flex; gap: 8px;
@@ -1653,6 +1829,8 @@ body.viewing-subs .state-subs { display: block; }
             紧跟反馈卡片之后，无需大幅滚动。 */
 @media (max-width: 499px) {
   /* —— body：取消垂直居中，改为顶部对齐，避免短内容上下产生空白 —— */
+  /* 注：本断点中 card-body padding、letter-spacing 已比通用建议更紧凑
+         （8/10px vs 18px、0.5px vs 0.8px），长句溢出风险已被现有规则覆盖 */
   body {
     align-items: flex-start;
     padding: 2px 4px 6px;
@@ -1684,6 +1862,8 @@ body.viewing-subs .state-subs { display: block; }
   .sentence-box {
     padding: 7px 10px 8px; margin-bottom: 6px; border-radius: 14px;
     transition: padding .25s, margin .25s, opacity .25s, transform .25s;
+    /* P1#15: 移动端 min-height 收紧；has-feedback 下的更小值见下方规则 */
+    min-height: 150px;
   }
   /* .chinese 字号由 clamp() 控制，这里只调字距和行高（ruby 拼音需要更大行高） */
   .chinese     { letter-spacing: 0.5px; line-height: 1.95; margin-bottom: 2px; }
@@ -1705,7 +1885,8 @@ body.viewing-subs .state-subs { display: block; }
     max-height: 0; opacity: 0;
     margin-top: 0; padding-top: 0; border-top-color: transparent;
   }
-  body.has-feedback .sentence-box { padding-bottom: 5px; margin-bottom: 5px; }
+  /* P1#15: has-feedback 时同步降低 min-height，避免反馈卡被挤下屏 */
+  body.has-feedback .sentence-box { padding-bottom: 5px; margin-bottom: 5px; min-height: 110px; }
 
   /* —— 听力按钮 + 速度按钮：更紧凑 —— */
   .listen-row { margin-bottom: 5px; gap: 6px; }
@@ -1785,7 +1966,9 @@ body.viewing-subs .state-subs { display: block; }
   .progress { margin-bottom: 3px; }
   .progress-dot { height: 2px; width: 10px; }
   .progress-dot.active { width: 16px; }
-  .sentence-box { padding: 5px 8px 6px; margin-bottom: 4px; border-radius: 12px; }
+  /* P1#15: 超小屏（如 iPhone SE）min-height 进一步收紧 */
+  .sentence-box { padding: 5px 8px 6px; margin-bottom: 4px; border-radius: 12px; min-height: 120px; }
+  body.has-feedback .sentence-box { min-height: 88px; }
   .chinese { font-size: clamp(22px, 6vw, 30px); line-height: 1.85; margin-bottom: 1px; }
   .arabic-meaning { font-size: 11.5px; padding-top: 3px; }
   .hint-text { font-size: 10.5px; line-height: 1.35; }
@@ -2028,7 +2211,8 @@ body.viewing-subs .state-subs { display: block; }
     <div class="streak-pill zero" id="streakPill" title="أيام متتالية">
       <span class="streak-icon">🔥</span>
       <span id="streakDays">0</span>
-      <span style="opacity:.75;font-size:10px;letter-spacing:.3px;">DAYS</span>
+      <!-- P0#2: DAYS → يوم，与界面其它阿语标签一致 -->
+      <span class="streak-unit">يوم</span>
     </div>
     <div class="daily-stars" id="dailyStars" title="هدف اليوم: 3 جمل">
       <span class="daily-star" data-i="0">⭐</span>
@@ -2125,9 +2309,10 @@ body.viewing-subs .state-subs { display: block; }
         <div class="arabic-meaning" id="meaning">مرحباً</div>
 
         <!-- Tone curves toggle -->
+        <!-- P0#1: 加阿语翻译 النغمات，与产品其他按钮的双语风格保持一致 -->
         <button class="tone-toggle" id="toneToggle" onclick="toggleTones()">
           <span>📈</span>
-          <span>声调图</span>
+          <span class="tone-toggle-label">النغمات · 声调</span>
           <span class="chev">▼</span>
         </button>
         <div class="tone-curves" id="toneCurves">
@@ -2136,8 +2321,9 @@ body.viewing-subs .state-subs { display: block; }
 
         <div class="hint-row">
           <span class="hint-icon">💡</span>
+          <!-- P0#3: 默认占位改阿语，JS 加载前不会出现纯中文 -->
           <span class="hint-text" id="hintText">
-            <strong>好 hǎo</strong> 是第三声，声音要先低再上来。
+            جاري تحضير الجملة…
           </span>
         </div>
       </div>
@@ -2154,8 +2340,8 @@ body.viewing-subs .state-subs { display: block; }
           <span id="listenLabel">استمع للنطق الصحيح</span>
         </button>
         <button class="speed-btn" id="speedBtn" onclick="toggleSlowMode()"
-                title="بطيء · 慢速">
-          0.6×
+                title="بطيء · 慢速" aria-label="بطيء">
+          🐢
         </button>
       </div>
 
@@ -2163,7 +2349,7 @@ body.viewing-subs .state-subs { display: block; }
       <div class="mic-section">
         <div class="mic-status">
           <div class="mic-status-ar" id="micStatusAr">اضغط وقل الجملة بصوت واضح</div>
-          <div class="mic-status-zh" id="micStatusZh">点击麦克风，然后大声跟读</div>
+          <div class="mic-status-zh" id="micStatusZh">点击麦克风，清晰地跟读这句话</div>
         </div>
         <div class="soundwave-bar" id="soundwaveBar">
           <div class="bar"></div><div class="bar"></div><div class="bar"></div>
@@ -2175,6 +2361,20 @@ body.viewing-subs .state-subs { display: block; }
           <span class="mic-btn-icon"  id="micBtnIcon">🎤</span>
           <span class="mic-btn-label" id="micBtnLabel">قلها الآن · 现在说</span>
         </button>
+        <!-- P1#12: 麦克风权限被拒绝后展示的阿语指引，默认隐藏；toggleMicPermHelp 控制展开 -->
+        <div class="mic-perm-help" id="micPermHelp" hidden>
+          <button class="mic-perm-help-toggle" type="button" onclick="toggleMicPermHelp()" aria-expanded="false">
+            <span>🛠️ كيف أسمح بالميكروفون؟</span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="mic-perm-help-body" id="micPermHelpBody">
+            <ol class="mic-perm-help-list">
+              <li><strong>iOS · Safari:</strong> اضغط أيقونة <code>AA</code> يسار شريط العنوان ← إعدادات الموقع ← اسمح بالميكروفون.</li>
+              <li><strong>Android · Chrome:</strong> اضغط أيقونة 🔒 يسار العنوان ← الأذونات ← الميكروفون ← اسمح.</li>
+              <li><strong>سطح المكتب:</strong> اضغط أيقونة القفل 🔒 بجوار العنوان ← الميكروفون ← اسمح، ثم أعد تحميل الصفحة.</li>
+            </ol>
+          </div>
+        </div>
       </div>
 
       <!-- Feedback -->
@@ -2183,11 +2383,16 @@ body.viewing-subs .state-subs { display: block; }
         <div class="dt-placeholder" id="dtPlaceholder">
           🎤&nbsp; انقر الميكروفون وقل الجملة
           <br>
-          <span style="font-size:11px; opacity:.7; font-family:'Nunito',sans-serif; direction:ltr;">
+          <span style="font-size:11px; opacity:.7; font-family:'Noto Sans SC',sans-serif; direction:ltr;">
             点击麦克风，跟读句子
           </span>
         </div>
         <div class="feedback-card" id="feedbackContent">
+          <!-- P1#11: 纯 mock 模式角标，默认隐藏 -->
+          <div class="fb-demo-tag" id="fbDemoTag" hidden>
+            <span class="fb-demo-dot"></span>
+            <span>وضع تجريبي · DEMO</span>
+          </div>
           <div class="fb-top">
             <span class="fb-score" id="fbScore">86</span>
             <span class="fb-emoji" id="fbEmoji">🌟</span>
@@ -2255,8 +2460,10 @@ body.viewing-subs .state-subs { display: block; }
 <!-- ═════════════════════════════════════════════════════════════ -->
 
 <!-- 倒计时遮罩 -->
-<div class="countdown-overlay" id="countdownOverlay">
+<!-- P0#5: 点击空白区域可取消倒计时；提示 tap-to-cancel -->
+<div class="countdown-overlay" id="countdownOverlay" onclick="cancelCountdown()" role="button" aria-label="إلغاء">
   <div class="countdown-number" id="countdownNum">3</div>
+  <div class="countdown-hint">انقر للإلغاء · 点击取消</div>
 </div>
 
 <!-- 每日目标达成弹窗 -->
@@ -2284,7 +2491,7 @@ body.viewing-subs .state-subs { display: block; }
       <div class="share-zh" id="shareZh">你好！</div>
       <div class="share-py" id="sharePy">nǐ hǎo</div>
       <div class="share-score-big" id="shareScore">95</div>
-      <div class="share-score-label">PRONUNCIATION SCORE</div>
+      <div class="share-score-label">درجة النطق · SCORE</div>
       <div class="share-tagline">أتعلّم الصينية يومياً 🇨🇳</div>
     </div>
     <div class="share-actions">
@@ -2317,21 +2524,21 @@ body.viewing-subs .state-subs { display: block; }
   <div class="cert-modal">
     <div class="cert-card">
       <div class="cert-medal" id="certMedal">🏆</div>
-      <div class="cert-label">CERTIFICATE OF COMPLETION</div>
+      <div class="cert-label">شهادة إتمام · CERTIFICATE</div>
       <div class="cert-pack-name-ar" id="certPackAr">المحادثات اليومية</div>
       <div class="cert-pack-name-zh" id="certPackZh">Daily Greetings</div>
       <div class="cert-stats">
         <div class="cert-stat">
           <div class="cert-stat-num" id="certAvg">88</div>
-          <div class="cert-stat-label">AVG SCORE</div>
+          <div class="cert-stat-label">المعدّل · AVG</div>
         </div>
         <div class="cert-stat">
           <div class="cert-stat-num" id="certBest">96</div>
-          <div class="cert-stat-label">BEST</div>
+          <div class="cert-stat-label">الأعلى · BEST</div>
         </div>
         <div class="cert-stat">
           <div class="cert-stat-num" id="certCount">5</div>
-          <div class="cert-stat-label">SENTENCES</div>
+          <div class="cert-stat-label">جمل · SENTENCES</div>
         </div>
       </div>
     </div>
@@ -4098,6 +4305,22 @@ body.viewing-subs .state-subs { display: block; }
       _proxyAudioEl = null;
     }
     _proxyAborted = true;
+    // P1#14: 同步取消尚未启动的 tip TTS 延迟调用
+    if (typeof _cancelPendingTip === 'function') _cancelPendingTip();
+    // P2#21: 兜底复位 listen 按钮 UI（防止 ttsSpeak 的 onDone 因中断未触发，
+    //   导致按钮卡在 .playing 状态）
+    try {
+      isPlaying = false;
+      const btn = document.getElementById('listenBtn');
+      const lbl = document.getElementById('listenLabel');
+      if (btn) btn.classList.remove('playing');
+      if (lbl && lbl.textContent !== 'استمع للنطق الصحيح') {
+        // 仅当当前文本是"播放中"动效内容时才重置，避免覆盖外部刚设置的文案
+        if (lbl.innerHTML.indexOf('sound-waves') !== -1) {
+          lbl.textContent = 'استمع للنطق الصحيح';
+        }
+      }
+    } catch(e) {}
   }
 
   // ── 文本分段：按标点 + 长度 ────────────────────────────────────
@@ -4589,7 +4812,7 @@ body.viewing-subs .state-subs { display: block; }
       case MIC_STATE.IDLE:
         icon.textContent = '🎤'; label.textContent = 'قلها الآن · 现在说';
         statusAr.textContent = 'اضغط وقل الجملة بصوت واضح';
-        statusZh.textContent = '点击麦克风，然后大声跟读';
+        statusZh.textContent = '点击麦克风，清晰地跟读这句话';
         statusAr.style.color = ''; statusZh.style.color = '';
         wavebar.classList.remove('active'); break;
       case MIC_STATE.LISTENING:
@@ -4597,7 +4820,18 @@ body.viewing-subs .state-subs { display: block; }
         icon.textContent = '🔴'; label.textContent = 'جارٍ الاستماع…';
         statusAr.textContent = 'أستمع إليك الآن…'; statusZh.textContent = '正在听你说…';
         statusAr.style.color = '#ff6b8a'; statusZh.style.color = '#ff6b8a';
-        wavebar.classList.add('active'); break;
+        wavebar.classList.add('active');
+        // P1#12: 进入 LISTENING 说明权限已经恢复，自动隐藏权限指引面板
+        {
+          const help = document.getElementById('micPermHelp');
+          if (help && !help.hidden) {
+            help.hidden = true;
+            help.classList.remove('open');
+            const tgl = help.querySelector('.mic-perm-help-toggle');
+            if (tgl) tgl.setAttribute('aria-expanded', 'false');
+          }
+        }
+        break;
       case MIC_STATE.ANALYZING:
         btn.classList.add('analyzing');
         icon.textContent = '⏳'; label.textContent = 'جارٍ التحليل…';
@@ -4615,7 +4849,15 @@ body.viewing-subs .state-subs { display: block; }
         const [l, ar, zh] = msgs[errorType] || msgs['generic'];
         label.textContent = l; statusAr.textContent = ar; statusZh.textContent = zh;
         statusAr.style.color = '#ef4444'; statusZh.style.color = '#ef4444';
-        setTimeout(() => setMicState(MIC_STATE.IDLE), 2200); break;
+        // P1#12: 麦克风权限被拒 → 显示阿语指引（折叠态），并延长错误展示至 4 秒
+        if (errorType === 'not-allowed') {
+          const help = document.getElementById('micPermHelp');
+          if (help) help.hidden = false;
+          setTimeout(() => setMicState(MIC_STATE.IDLE), 4000);
+        } else {
+          setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
+        }
+        break;
     }
   }
 
@@ -4661,7 +4903,9 @@ body.viewing-subs .state-subs { display: block; }
       }
     }
     function nameTagFor(ci) {
-      // 如果 ci 是某个 nameRange 的末尾，则在该字 span 之后追加【人名】标签
+      // P2#17: 连续 name===true 的字段视为一个人名块，标签只在该块"最末一字"之后追加一次，
+      //   避免"王老师"渲染成"王[اسم]老[اسم]师[اسم]"。aria-label 与显示文本一致，
+      //   读屏对阿语学生友好。
       for (const [a, b] of nameRanges) {
         if (ci === b) return '<span class="name-tag" aria-label="اسم">اسم</span>';
       }
@@ -4707,18 +4951,16 @@ body.viewing-subs .state-subs { display: block; }
       // 重置声调曲线折叠状态
       const toneCurves = document.getElementById('toneCurves');
       const toneToggle = document.getElementById('toneToggle');
-      if (toneCurves && toneCurves.classList.contains('show')) {
-        // 已展开：直接刷新内容
-        renderToneCurves();
-      } else if (toneToggle) {
-        toneToggle.classList.remove('open');
-      }
+      // Bug-A: 无条件渲染（移动端折叠态 max-height:0 仍隐藏；桌面端强制展开则可见）
+      if (toneCurves) renderToneCurves();
+      if (toneToggle && !toneCurves?.classList.contains('show')) toneToggle.classList.remove('open');
       box.classList.remove('changing');
       renderProgress();
     }, 200);
     document.getElementById('feedbackContent').classList.remove('show');
     document.body.classList.remove('has-feedback');
     document.getElementById('nextBtn').disabled = true;
+    document.getElementById('nextBtn').classList.remove('muted');
     // 恢复桌面端占位框
     const ph = document.getElementById('dtPlaceholder');
     if (ph) ph.classList.remove('hidden');
@@ -4767,12 +5009,45 @@ body.viewing-subs .state-subs { display: block; }
     document.getElementById('feedbackContent').classList.remove('show');
     document.body.classList.remove('has-feedback');
     document.getElementById('nextBtn').disabled = true;
+    document.getElementById('nextBtn').classList.remove('muted');
     const ref = LESSONS[currentIndex].zh;
     if (AZURE_SPEECH_KEY && AZURE_REGION) {
       await startMediaRecorder(ref);
     } else {
       await startFallbackRecognition(ref);
     }
+  }
+
+  // P1#10: 录音超时按句长动态化
+  //   原硬性 8000ms 对 7+ 字长句不够（HSK1-3 学生本就慢）
+  //   公式：基础 5s + 每字 1.5s，保底 8s，封顶 18s
+  function calcRecordTimeoutMs() {
+    const lesson = LESSONS && LESSONS[currentIndex];
+    const charCount = (lesson?.chars?.length) || (lesson?.zh?.length) || 5;
+    return Math.min(18000, Math.max(8000, 5000 + charCount * 1500));
+  }
+
+  // P1#10: 在 mic-btn-label 上显示剩余倒数秒数，让学生清楚还能录多久
+  let _recCountdownTimer = null;
+  function startRecCountdown(totalMs) {
+    stopRecCountdown();
+    const label = document.getElementById('micBtnLabel');
+    if (!label) return;
+    let remain = Math.ceil(totalMs / 1000);
+    const baseText = 'جارٍ الاستماع…';
+    label.textContent = `${baseText}  ${remain}`;
+    _recCountdownTimer = setInterval(() => {
+      remain--;
+      if (remain <= 0) {
+        label.textContent = baseText;
+        stopRecCountdown();
+        return;
+      }
+      label.textContent = `${baseText}  ${remain}`;
+    }, 1000);
+  }
+  function stopRecCountdown() {
+    if (_recCountdownTimer) { clearInterval(_recCountdownTimer); _recCountdownTimer = null; }
   }
 
   async function startMediaRecorder(ref) {
@@ -4782,6 +5057,7 @@ body.viewing-subs .state-subs { display: block; }
       mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
+        stopRecCountdown();   // P1#10: 清理倒数计时器
         stream.getTracks().forEach(t => t.stop());
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         setMicState(MIC_STATE.ANALYZING);
@@ -4791,7 +5067,10 @@ body.viewing-subs .state-subs { display: block; }
         } catch(err) { console.error(err); setMicState(MIC_STATE.ERROR, 'generic'); }
       };
       mediaRecorder.start();
-      setTimeout(() => { if (mediaRecorder?.state === 'recording') stopRecording(); }, 8000);
+      // P1#10: 动态超时 + 启动剩余秒数显示
+      const timeoutMs = calcRecordTimeoutMs();
+      startRecCountdown(timeoutMs);
+      setTimeout(() => { if (mediaRecorder?.state === 'recording') stopRecording(); }, timeoutMs);
     } catch(err) {
       isRecording = false;
       setMicState(MIC_STATE.ERROR, err.name === 'NotAllowedError' ? 'not-allowed' : 'generic');
@@ -4806,6 +5085,7 @@ body.viewing-subs .state-subs { display: block; }
       recognition.lang = 'zh-CN'; recognition.continuous = false;
       recognition.interimResults = false; recognition.maxAlternatives = 3;
       recognition.onresult = async e => {
+        stopRecCountdown();   // P1#10: 拿到结果就停倒数
         const t = e.results[0][0].transcript.trim();
         const c = e.results[0][0].confidence || 0.72;
         setMicState(MIC_STATE.ANALYZING);
@@ -4814,18 +5094,22 @@ body.viewing-subs .state-subs { display: block; }
         handleAssessmentResult(result);
       };
       recognition.onerror = e => {
+        stopRecCountdown();   // P1#10
         isRecording = false;
         if      (e.error === 'no-speech')   setMicState(MIC_STATE.ERROR, 'no-speech');
         else if (e.error === 'not-allowed') setMicState(MIC_STATE.ERROR, 'not-allowed');
         else simulatePureMock(ref);
       };
       recognition.onend = () => {
+        stopRecCountdown();   // P1#10
         isRecording = false;
         const btn = document.getElementById('micBtn');
         if (!btn.classList.contains('analyzing') && !btn.classList.contains('error'))
           setMicState(MIC_STATE.IDLE);
       };
       recognition.start();
+      // P1#10: fallback 路径也显示倒数（仅展示，SR 自己控制停止）
+      startRecCountdown(calcRecordTimeoutMs());
     } catch(e) { simulatePureMock(ref); }
   }
 
@@ -4833,7 +5117,11 @@ body.viewing-subs .state-subs { display: block; }
     setTimeout(() => {
       setMicState(MIC_STATE.ANALYZING);
       setTimeout(() => {
-        handleAssessmentResult(makeMockResult(ref, '', 0.65 + Math.random() * 0.2));
+        // P1#11: 纯 mock 模式（无 Azure key 且浏览器无 SpeechRecognition）
+        //   学生没出声也会拿到分数，必须明确告知"这是演示评分"
+        const result = makeMockResult(ref, '', 0.65 + Math.random() * 0.2);
+        result.demoMode = true;
+        handleAssessmentResult(result);
       }, 900);
     }, 2200);
   }
@@ -4841,6 +5129,7 @@ body.viewing-subs .state-subs { display: block; }
   function stopRecording() {
     try { if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); } catch(e){}
     try { recognition?.stop(); } catch(e){}
+    stopRecCountdown();   // P1#10: 手动停止也要清掉倒数显示
     isRecording = false;
   }
 
@@ -4870,10 +5159,10 @@ body.viewing-subs .state-subs { display: block; }
       { zh: '再练一次。',     ar: 'كرّر مرة.' },
     ],
     tryAgain: [
-      { zh: '再来一次。',     ar: 'حاول مجدداً.' },
-      { zh: '慢一点说。',     ar: 'تمهّل قليلاً.' },
-      { zh: '别着急。',       ar: 'لا تستعجل.' },
-      { zh: '多练几次。',     ar: 'تدرّب أكثر.' },
+      { zh: '再来一次。',     ar: 'حاول مجدداً، ركّز على النغمات.' },
+      { zh: '慢一点说。',     ar: 'تمهّل، انطق كل مقطع بوضوح.' },
+      { zh: '别着急。',       ar: 'لا تستعجل، استمع ثم كرّر.' },
+      { zh: '多练几次。',     ar: 'تدرّب أكثر على النغمات.' },
     ],
   };
 
@@ -4899,6 +5188,17 @@ body.viewing-subs .state-subs { display: block; }
       else                          shareBtn.classList.add('hidden');
     }
     _lastScore = score; // 给分享卡片用
+
+    // P1#11: 纯 mock 演示模式显示 demo 角标；分享按钮强制隐藏（避免学生分享演示分数）
+    const demoTag = document.getElementById('fbDemoTag');
+    if (demoTag) {
+      if (result && result.demoMode) {
+        demoTag.hidden = false;
+        if (shareBtn) shareBtn.classList.add('hidden');
+      } else {
+        demoTag.hidden = true;
+      }
+    }
 
     document.getElementById('fbScore').textContent    = score;
     document.getElementById('fbEmoji').textContent    = emoji;
@@ -4933,14 +5233,30 @@ body.viewing-subs .state-subs { display: block; }
       card.classList.add('show');
       document.body.classList.add('has-feedback');
     }));
-    document.getElementById('nextBtn').disabled = false;
+    const nextBtn = document.getElementById('nextBtn');
+    nextBtn.disabled = false;
+    // #10 低分时按钮视觉降级，让"再试一次"成为焦点
+    if (tier === 'try-again') nextBtn.classList.add('muted');
+    else                      nextBtn.classList.remove('muted');
 
     // 反馈语音：鼓励语说完停顿后说建议
+    // P1#14: tip TTS 的 setTimeout 保存到 _pendingTipTimer，
+    //   后续 nextSentence/retryCurrent/returnToPacks/ttsStop 都会清理它，
+    //   避免学生已切到下一句但建议语音还在追播。
     ttsSpeak(praise.zh, 0.9, () => {
       if (tipSpoken) {
-        setTimeout(() => ttsSpeak(tipSpoken, 0.85, null), 500);
+        _pendingTipTimer = setTimeout(() => {
+          _pendingTipTimer = null;
+          ttsSpeak(tipSpoken, 0.85, null);
+        }, 500);
       }
     });
+  }
+
+  // P1#14: tip TTS 延时句柄
+  let _pendingTipTimer = null;
+  function _cancelPendingTip() {
+    if (_pendingTipTimer) { clearTimeout(_pendingTipTimer); _pendingTipTimer = null; }
   }
 
   // 逐字颜色块渲染
@@ -4964,11 +5280,21 @@ body.viewing-subs .state-subs { display: block; }
     });
   }
 
+  // P1#13: 去除随机抖动 — 学生重复念同一句子时，字级颜色应稳定
+  //   原 (Math.random()-0.5)*20 让"米"字这次绿、下次红，破坏信任。
+  //   改为基于汉字 code point 的确定性偏移：同字始终同色，
+  //   不同字之间仍有 ±6 的合理差异感（避免全部相同看起来死板）。
+  function _stableJitter(hz, range) {
+    // 汉字 code point 已是稳定整数，取 mod 映射到 [-range, +range]
+    const cp = hz.charCodeAt(0) || 0;
+    const span = range * 2 + 1;       // [-range, +range] 共 span 档
+    return (cp % span) - range;
+  }
   function getCharQuality(charData, index, score, transcript) {
     const recognized = transcript && transcript.includes(charData.hz);
     const base   = score + (recognized ? 8 : -10);
-    const jitter = (Math.random() - 0.5) * 20;
-    const val    = base + jitter;
+    const offset = _stableJitter(charData.hz, 6);  // 确定性，无随机
+    const val    = base + offset;
     return val >= 80 ? 'ok' : val >= 58 ? 'near' : 'miss';
   }
 
@@ -5004,6 +5330,8 @@ body.viewing-subs .state-subs { display: block; }
   //  导航
   // ═══════════════════════════════════════════════════════════════
   function nextSentence() {
+    // P1#14: 切句前停掉所有 TTS（含正在播的鼓励语和排队中的 tip 延时）
+    ttsStop();
     currentIndex = (currentIndex + 1) % LESSONS.length;
     showSentence();
   }
@@ -5040,7 +5368,12 @@ body.viewing-subs .state-subs { display: block; }
 
   function loadState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      // P2#22: 优先读 localStorage；若隐私模式禁用了它，回退到 sessionStorage
+      let raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) {}
+      if (raw == null) {
+        try { raw = sessionStorage.getItem(STORAGE_KEY); } catch(e) {}
+      }
       if (raw) Object.assign(_state, JSON.parse(raw));
     } catch(e) { console.warn('[state] load failed', e); }
 
@@ -5060,8 +5393,15 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_state)); }
-    catch(e) { console.warn('[state] save failed', e); }
+    const payload = JSON.stringify(_state);
+    // P2#22: 先尝试 localStorage；失败（隐私模式/iOS 限制）则降级到 sessionStorage，
+    //   保证至少本次会话进度不丢失
+    try {
+      localStorage.setItem(STORAGE_KEY, payload);
+      return;
+    } catch(e) { console.warn('[state] localStorage save failed, falling back to sessionStorage', e); }
+    try { sessionStorage.setItem(STORAGE_KEY, payload); }
+    catch(e) { console.warn('[state] sessionStorage save also failed', e); }
   }
 
   function renderTopStats() {
@@ -5205,11 +5545,15 @@ body.viewing-subs .state-subs { display: block; }
 
   // ═══════════════════════════════════════════════════════════════
   //  ⏱️ 录音前 3-2-1 倒计时
+  //  P0#5: 支持点击遮罩中途取消，避免学生误触后被迫等满 2.1 秒
   // ═══════════════════════════════════════════════════════════════
+  let _countdownTimer = null;     // 当前 setTimeout id
+  let _countdownActive = false;   // 倒计时是否进行中
   function runCountdown(onComplete) {
     const overlay = document.getElementById('countdownOverlay');
     const numEl   = document.getElementById('countdownNum');
     let step = 3;
+    _countdownActive = true;
     overlay.classList.add('show');
     numEl.classList.remove('go');
     numEl.textContent = step;
@@ -5219,6 +5563,7 @@ body.viewing-subs .state-subs { display: block; }
     numEl.style.animation = '';
 
     const tick = () => {
+      if (!_countdownActive) return;   // P0#5: 已取消则直接退出链
       step--;
       if (step > 0) {
         numEl.classList.remove('go');
@@ -5226,20 +5571,40 @@ body.viewing-subs .state-subs { display: block; }
         numEl.style.animation = 'none';
         void numEl.offsetWidth;
         numEl.style.animation = '';
-        setTimeout(tick, COUNTDOWN_MS_PER_STEP);
+        _countdownTimer = setTimeout(tick, COUNTDOWN_MS_PER_STEP);
       } else if (step === 0) {
         numEl.classList.add('go');
-        numEl.textContent = 'GO!';
+        // P2#16: GO! 加阿语 ابدأ!，与产品双语风格一致
+        numEl.textContent = 'ابدأ!';
         numEl.style.animation = 'none';
         void numEl.offsetWidth;
         numEl.style.animation = '';
-        setTimeout(() => {
+        _countdownTimer = setTimeout(() => {
+          if (!_countdownActive) return;   // P0#5: GO 阶段也可被取消
+          _countdownActive = false;
           overlay.classList.remove('show');
           if (onComplete) onComplete();
         }, 500);
       }
     };
-    setTimeout(tick, COUNTDOWN_MS_PER_STEP);
+    _countdownTimer = setTimeout(tick, COUNTDOWN_MS_PER_STEP);
+  }
+
+  // P0#5: 点击遮罩取消倒计时，不触发 startRecording
+  function cancelCountdown() {
+    if (!_countdownActive) return;
+    _countdownActive = false;
+    if (_countdownTimer) { clearTimeout(_countdownTimer); _countdownTimer = null; }
+    document.getElementById('countdownOverlay').classList.remove('show');
+  }
+
+  // P1#12: 麦克风权限指引面板的折叠/展开
+  function toggleMicPermHelp() {
+    const help = document.getElementById('micPermHelp');
+    if (!help) return;
+    const isOpen = help.classList.toggle('open');
+    const tgl = help.querySelector('.mic-perm-help-toggle');
+    if (tgl) tgl.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -5250,10 +5615,16 @@ body.viewing-subs .state-subs { display: block; }
     const btn = document.getElementById('speedBtn');
     if (_slowMode) {
       btn.classList.add('active');
-      btn.title = 'العادي · 正常速度';
+      // P0#8: 激活态用蜗牛（比乌龟更慢），纯 emoji 跨语言直观，避免"0.6×"对零基础学生的认知负担
+      btn.textContent = '🐌';
+      btn.title = 'العادي · 恢复正常速度';
+      btn.setAttribute('aria-label', 'العادي');
     } else {
       btn.classList.remove('active');
+      // P0#8: 非激活态保留乌龟，代表"点这里开启慢速"
+      btn.textContent = '🐢';
       btn.title = 'بطيء · 慢速';
+      btn.setAttribute('aria-label', 'بطيء');
     }
     // 立即用新速度播一遍标准发音，让用户听到差异
     if (!isPlaying && !isRecording) {
@@ -5266,13 +5637,21 @@ body.viewing-subs .state-subs { display: block; }
   // ═══════════════════════════════════════════════════════════════
   function retryCurrent() {
     if (isPlaying || isRecording) return;
-    document.getElementById('feedbackContent').classList.remove('show');
-    document.body.classList.remove('has-feedback');
-    document.getElementById('nextBtn').disabled = true;
-    // 恢复桌面端占位框
-    const ph = document.getElementById('dtPlaceholder');
-    if (ph) ph.classList.remove('hidden');
-    runCountdown(() => startRecording());
+    // P1#14: 重试前停掉建议语音和延时
+    ttsStop();
+    // Bug-B: 把"隐藏反馈卡 + 禁用 next-btn + 切占位"全部推迟到倒计时完成后再执行。
+    //   原实现是先清状态再倒数，取消倒计时时反馈卡已不见、next-btn 已 disabled、
+    //   share/retry 因 feedback-card 失去 .show 而 pointer-events:none，学生陷入死锁。
+    //   推迟后：取消 → 界面保持评分态，学生可继续操作。
+    runCountdown(() => {
+      document.getElementById('feedbackContent').classList.remove('show');
+      document.body.classList.remove('has-feedback');
+      document.getElementById('nextBtn').disabled = true;
+      document.getElementById('nextBtn').classList.remove('muted');
+      const ph = document.getElementById('dtPlaceholder');
+      if (ph) ph.classList.remove('hidden');
+      startRecording();
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -5329,9 +5708,10 @@ body.viewing-subs .state-subs { display: block; }
     ctx.fillText(String(_lastScore), W/2, 680);
 
     // 分数标签
-    ctx.font = '500 22px Nunito, sans-serif';
+    // P1-γ: 阿英混排，字体栈先放阿语字体，拉丁字符自动回退到 Nunito
+    ctx.font = '500 22px "IBM Plex Sans Arabic", Nunito, sans-serif';
     ctx.globalAlpha = 0.85;
-    ctx.fillText('PRONUNCIATION SCORE', W/2, 730);
+    ctx.fillText('درجة النطق · SCORE', W/2, 730);
     ctx.globalAlpha = 1;
 
     // 分割线
@@ -5568,6 +5948,8 @@ body.viewing-subs .state-subs { display: block; }
         if (!unlocked) {
           tile.style.animation = 'shake .4s ease';
           setTimeout(() => tile.style.animation = '', 450);
+          // P0#4: 锁定时给出阿语提示，明确告诉学生为什么进不去、如何解锁
+          showLockedToast(pack);
           return;
         }
         enterPack(pack.id);
@@ -5590,8 +5972,25 @@ body.viewing-subs .state-subs { display: block; }
     // 重渲染
     renderProgress();
     showSentence();
-    // 自动播一次标准发音，让用户进入沉浸
-    setTimeout(() => playStandard(), 350);
+    // P1#9: 首次访问且 TTS 尚未通过用户手势解锁时，自动 playStandard 会被浏览器静默拦截。
+    //       已解锁则照旧自动播一次（保留原"沉浸感"体验）；未解锁则给"听"按钮一次性呼吸提示，
+    //       引导学生点击以同时完成"解锁 TTS + 听标准发音"。
+    if (_ttsUnlocked) {
+      setTimeout(() => playStandard(), 350);
+    } else {
+      hintListenButton();
+    }
+  }
+
+  // P1#9: 给 listen 按钮加一次性脉冲呼吸动画
+  function hintListenButton() {
+    const btn = document.getElementById('listenBtn');
+    if (!btn) return;
+    btn.classList.add('attention');
+    // 3.5 秒后自动撤销提示；用户一旦点击也立即撤销
+    const stop = () => btn.classList.remove('attention');
+    setTimeout(stop, 3500);
+    btn.addEventListener('click', stop, { once: true });
   }
 
   function returnToPacks() {
@@ -5681,8 +6080,24 @@ body.viewing-subs .state-subs { display: block; }
     document.getElementById('certOverlay').classList.remove('show');
   }
 
-  function downloadCert() {
+  async function downloadCert() {
     if (!_certPack) return;
+    // #18 canvas 渲染 web font 前必须等字体加载完成，否则 Windows 等未装该字体的设备
+    //     会回退到系统默认字体，阿语字符会出现字距错乱、点状符号粘连
+    try {
+      if (document.fonts && document.fonts.load) {
+        await Promise.all([
+          document.fonts.load('700 56px "IBM Plex Sans Arabic"'),
+          document.fonts.load('600 22px "IBM Plex Sans Arabic"'),
+          document.fonts.load('500 26px "IBM Plex Sans Arabic"'),
+          document.fonts.load('500 16px "IBM Plex Sans Arabic"'),
+          document.fonts.load('500 36px "Noto Sans SC"'),
+          document.fonts.load('800 96px Nunito'),
+          document.fonts.load('600 22px Nunito'),
+          document.fonts.load('500 16px Nunito'),
+        ]);
+      }
+    } catch (e) { /* 字体加载失败也继续渲染，至少回退到系统字体而不阻塞下载 */ }
     const pack  = _certPack;
     const stats = getPackStats(pack);
     const canvas = document.getElementById('shareCanvas');
@@ -5696,12 +6111,16 @@ body.viewing-subs .state-subs { display: block; }
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
     // Emoji 大徽章
-    ctx.font = '160px sans-serif';
+    // P2#20: 显式声明 emoji 字体栈，让 Win/Linux/macOS/Android 都尽量用彩色 emoji；
+    //   若都不可用回退到 sans-serif（无害降级），证书仍可用。
+    ctx.font = '160px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
     ctx.fillText(pack.emoji, W/2, 280);
     // 标签
-    ctx.font = '600 24px Nunito, sans-serif';
+    // 瑕疵-F: 字体栈先放阿语字体（IBM Plex Sans Arabic），再回退 Nunito。
+    //   canvas 按字符查字形，阿语字符走前者、拉丁字符走后者，混排正常显示。
+    ctx.font = '600 22px "IBM Plex Sans Arabic", Nunito, sans-serif';
     ctx.globalAlpha = .85;
-    ctx.fillText('CERTIFICATE OF COMPLETION', W/2, 360);
+    ctx.fillText('شهادة إتمام · CERTIFICATE', W/2, 360);
     ctx.globalAlpha = 1;
     // 包名
     ctx.font = '700 56px "IBM Plex Sans Arabic", sans-serif';
@@ -5715,11 +6134,12 @@ body.viewing-subs .state-subs { display: block; }
     ctx.fillText(stats.avg + '', W/2 - 200, 720);
     ctx.fillText(stats.best + '', W/2,      720);
     ctx.fillText(stats.total + '', W/2 + 200, 720);
-    ctx.font = '500 18px Nunito, sans-serif';
+    // 瑕疵-F: stat 标签使用阿英混排栈
+    ctx.font = '500 16px "IBM Plex Sans Arabic", Nunito, sans-serif';
     ctx.globalAlpha = .8;
-    ctx.fillText('AVG',       W/2 - 200, 760);
-    ctx.fillText('BEST',      W/2,       760);
-    ctx.fillText('SENTENCES', W/2 + 200, 760);
+    ctx.fillText('المعدّل · AVG',  W/2 - 200, 760);
+    ctx.fillText('الأعلى · BEST',  W/2,       760);
+    ctx.fillText('جمل · SENTENCES', W/2 + 200, 760);
     ctx.globalAlpha = 1;
     // 底部品牌
     ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5;
@@ -5749,6 +6169,39 @@ body.viewing-subs .state-subs { display: block; }
       `تم فتح: ${nextPack.emoji} ${nextPack.nameAr}`;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  // P0#4: 学生点击锁定 pack 时的阿语提示
+  //   - 复用 unlock-toast 的 DOM 与样式，零新增元素
+  //   - 找到该 pack 的"前置 pack"，把名字告诉学生（明确下一步该练哪关）
+  //   - 用 🔒 替换默认 🎉，让视觉语义和"未解锁"对应
+  function showLockedToast(pack) {
+    const t = document.getElementById('unlockToast');
+    if (!t) return;
+    // 查找需要先通关的前置 pack
+    let prevName = '';
+    const cat = CATEGORIES.find(c => c.subIds.includes(pack.id));
+    if (cat) {
+      const idx = cat.subIds.indexOf(pack.id);
+      if (idx > 0) {
+        const prev = PACKS.find(p => p.id === cat.subIds[idx - 1]);
+        if (prev) prevName = `${prev.emoji} ${prev.nameAr}`;
+      }
+    }
+    const iconEl = t.querySelector('.unlock-toast-icon');
+    const textEl = document.getElementById('unlockToastText');
+    const prevIcon = iconEl ? iconEl.textContent : '🎉';
+    if (iconEl) iconEl.textContent = '🔒';
+    textEl.textContent = prevName
+      ? `أكمل أولاً: ${prevName}`
+      : 'أكمل الموقف السابق أولاً';
+    t.classList.add('show');
+    // 提示结束后恢复默认图标，避免影响后续 showUnlockToast
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(() => {
+      t.classList.remove('show');
+      if (iconEl) iconEl.textContent = prevIcon;
+    }, 3000);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -5786,13 +6239,16 @@ body.viewing-subs .state-subs { display: block; }
 
   // SVG 曲线路径（基于 38x36 viewBox，y=0 顶，y=36 底）
   // 声调形象化：1 平 2 升 3 凹 4 降 0 点
+  // #8 颜色统一为 indigo 系深浅四档，把红/黄/绿留给评分反馈语义，
+  //    避免学生把"三声 amber"与"接近 amber（需再练）"混为一谈。
+  //    四个声调本身已用形状（平/升/凹/降）天然区分。
   function toneSvg(tone) {
     const colors = {
-      1: '#6366f1', // indigo - 平
-      2: '#10b981', // green - 升
-      3: '#f59e0b', // amber - 凹
-      4: '#f43f5e', // rose - 降
-      0: '#94a3b8', // muted - 轻声
+      1: '#4338ca', // indigo-700 - 平（最深）
+      2: '#6366f1', // indigo-500 - 升
+      3: '#818cf8', // indigo-400 - 凹
+      4: '#a5b4fc', // indigo-300 - 降（最浅）
+      0: '#94a3b8', // slate-400  - 轻声（中性灰）
     };
     const stroke = colors[tone];
     let path;
@@ -5847,6 +6303,13 @@ body.viewing-subs .state-subs { display: block; }
   // ═══════════════════════════════════════════════════════════════
   //  初始化
   // ═══════════════════════════════════════════════════════════════
+  // #16 仅在 URL 带 ?debug=1 时显示 TTS 引擎徽章，避免对学生造成技术噪声
+  try {
+    if (new URLSearchParams(location.search).get('debug') === '1') {
+      document.body.classList.add('debug-mode');
+    }
+  } catch (e) { /* 忽略 */ }
+
   loadState();          // 从 localStorage 恢复 streak / 今日星星 / pack 进度
   renderTopStats();     // 顶部状态栏
   updateComboUI();      // 显示已存在的 combo
