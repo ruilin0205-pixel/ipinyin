@@ -17,8 +17,14 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- P1-δ: IBM Plex Sans Arabic 加 700 权重（证书包名、celebrate 标题等场景使用 font-weight:700） -->
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- 拼音字体修复：
+     • Noto Sans —— Google "无豆腐字"字体，覆盖完整 Latin Extended-A (U+0100-U+017F)
+       和 Latin Extended-B (U+0180-U+024F)，包含每一个大写带声调字母（Ā Ē Ī Ō Ū Ǎ Ě Ǐ Ǒ Ǔ）
+       的原生预组合字形。这是解决"Ā/Ē 等大写带声调字母在 Nunito 中缺失、
+       浏览器降级为 NFD 分解渲染、导致字母与声调符号分离/有空隙"的关键字体。
+     • Nunito 仍保留作为更圆润的视觉首选（小写带声调字母如 ǎ ě 等它支持完整）。
+     • Noto Sans SC 提供汉字；IBM Plex Sans Arabic 提供阿语。 -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -57,12 +63,87 @@
 
   /* Fonts */
   --font-ar: "IBM Plex Sans Arabic", "Noto Sans Arabic", sans-serif;
-  --font-zh: "Noto Sans SC", sans-serif;
-  --font-py: "Nunito", sans-serif;   /* rounded — great for pinyin tones */
+  --font-zh: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* 拼音字体栈（修复"Ā 等大写带声调字母与字母分离"的根因）：
+     
+     根本原因：浏览器字体回退是"逐字符"的——如果首选字体含 'n' 但缺 'Ā'，
+     则 'Ān' 这个字符串里 'n' 用首选字体、'Ā' 用下一个字体；两种字体字宽/字高
+     不同，产生视觉空隙。Nunito 的 Web 子集恰好缺大写带声调字母（Ā Ē Ī Ō Ū Ǎ 等），
+     于是 "Ān"（专名首字母大写）被拆开渲染——这正是用户截图所见的 "A¯n" 现象。
+     
+     解决方案：把 "Noto Sans" 放在字体栈最前（它原生包含所有大小写预组合带声调
+     字母，零缺字），所有拼音字符均从同一字体取字形，杜绝逐字符回退。
+     Nunito 作为美观备选，仅在 Noto Sans 加载失败时启用。 */
+  --font-py: "Noto Sans", "Nunito",
+             "Charter", "Bitstream Charter",
+             "Source Sans Pro", "Source Sans 3",
+             "Segoe UI", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+             "Helvetica Neue", "Arial Unicode MS",
+             "Roboto", "DejaVu Sans", "Liberation Sans",
+             system-ui, sans-serif;
 }
 
 /* ── Base ───────────────────────────────────────────────────── */
 html, body { height: 100%; }
+
+/* ── 拼音字符渲染全局增强 ─────────────────────────────────
+   覆盖所有显示拼音的类（.pinyin / .fb-char-py / .share-py /
+   .tone-curve-py / rt.hz-py / .hint-text / .fb-tip-text 等），
+   在字体回退发生时也能保证：
+   • 声调字母与组合附加符号正确合并显示（ccmp = Glyph Composition）
+   • 上下文字距正常（kern + calt），不会出现字母-声调符号之间的视觉空隙
+   • 走更精细的文本渲染路径（optimizeLegibility） */
+.pinyin,
+.fb-char-py,
+.share-py,
+.tone-curve-py,
+.chinese ruby rt.hz-py,
+.hint-text,
+.fb-tip-text,
+.fb-debug-char-score,
+.fb-debug-val,
+.fb-debug-formula {
+  font-kerning: normal;
+  font-variant-ligatures: contextual;
+  -webkit-font-feature-settings: "kern" 1, "calt" 1, "ccmp" 1;
+          font-feature-settings: "kern" 1, "calt" 1, "ccmp" 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── 第一声 macron 横线（CSS 绘制，脱离字体） ──────────────────
+   背景：用户环境字体缺第一声 macron 字形（ā ē ī ō ū），浏览器把这些字符
+   做 NFD 分解渲染，导致字母与横线之间出现可见空隙（"a ¯ n"）。
+   方案：把第一声字母在 DOM 里渲染为基础 ASCII 字母（a/e/i/o/u），
+   外包 <span class="py-macron">，用 ::before 伪元素绘制横线。
+   • 横线宽度、位置由 em 单位定义，自动跟随字号
+   • 不依赖任何字体的 macron 字形，从根本上杜绝分离渲染
+   • 视觉效果：字母上方紧贴一条横线，与原生 ā 字符渲染一致 */
+.py-macron {
+  position: relative;
+  display: inline-block;
+  /* 让基础字母在视觉上保持原 ā 的字宽（不缩放，仅添加上方横线） */
+}
+.py-macron::before {
+  content: '';
+  position: absolute;
+  /* 横线位置：在字母上方 0.05em 处，水平居中并略宽于字母主体 */
+  left: 12%;
+  right: 12%;
+  top: -0.02em;
+  height: 0.08em;
+  background: currentColor;
+  border-radius: 0.04em;
+  /* 确保横线在所有 transform/动画下不变形 */
+  pointer-events: none;
+}
+/* 字号较小（如 ruby 注音）时，横线略加粗，避免在高 DPR 屏幕上消失 */
+.chinese ruby rt.hz-py .py-macron::before,
+.fb-char-py .py-macron::before {
+  height: 0.1em;
+  top: -0.04em;
+}
 
 body {
   font-family: var(--font-ar);
@@ -359,7 +440,12 @@ body::before {
   font-family: var(--font-ar);
 }
 .hint-text {
-  font-family: var(--font-ar);
+  /* 混合内容（阿语 + 拉丁拼音 + 中文）：把拼音字体栈前置，
+     让带声调的拉丁字符优先用 Nunito 渲染；阿语字符按 unicode-range
+     回退到 IBM Plex Sans Arabic；中文字符回退到 Noto Sans SC。
+     这样可避免阿语字体（不专门为拼音设计）渲染 hǎo/zài/bú 时
+     声调符号与字母之间出现空隙。 */
+  font-family: var(--font-py), var(--font-ar), var(--font-zh);
   font-size: 12.5px; color: var(--slate);
   line-height: 1.7;
   flex: 1;
@@ -760,8 +846,10 @@ body::before {
 }
 .fb-tip-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
 .fb-tip-text {
-  /* P1-α: tip 内容来自 chars[i].tips，是中文 → 必须用中文字体，避免 Nunito 字形回退 */
-  font-family: var(--font-zh);
+  /* tip 内容是混合的中文 + 拼音（如 "你 nǐ 是第三声"）。
+     拼音字体前置：带声调拉丁字符优先用 Nunito，避免 Noto Sans SC
+     渲染 nǐ/hǎo/wǒ 时声调符号脱开；其他字符走中文字体回退。 */
+  font-family: var(--font-py), var(--font-zh);
   font-size: 11.5px; color: var(--slate);
   line-height: 1.6;
 }
@@ -1304,6 +1392,96 @@ button:focus-visible {
 }
 /* #16 仅 URL 带 ?debug=1 时显示 TTS 引擎徽章 */
 body.debug-mode .tts-engine-badge { display: inline-block; }
+
+/* ── 评分调试明细（?debug=1 模式下显示在反馈卡内）─────────── */
+.fb-debug {
+  display: none;
+  margin-top: 10px;
+  padding: 9px 11px;
+  background: rgba(99,102,241,.05);
+  border: 1px dashed rgba(99,102,241,.25);
+  border-radius: 10px;
+  direction: ltr;
+  text-align: left;
+  font-family: var(--font-py);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--slate);
+}
+body.debug-mode .fb-debug { display: block; }
+.fb-debug-title {
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .8px;
+  color: var(--indigo);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.fb-debug-title::before {
+  content: '';
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--indigo);
+}
+.fb-debug-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px dotted rgba(99,102,241,.1);
+}
+.fb-debug-row:last-child { border-bottom: none; }
+.fb-debug-key { color: var(--muted); font-weight: 600; flex-shrink: 0; }
+.fb-debug-val {
+  color: var(--ink);
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  text-align: right;
+  word-break: break-all;
+}
+.fb-debug-val.zh {
+  font-family: var(--font-zh);
+  font-weight: 500;
+}
+.fb-debug-formula {
+  margin-top: 4px;
+  padding: 5px 7px;
+  background: rgba(99,102,241,.08);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 10.5px;
+  color: var(--indigo);
+  font-weight: 700;
+  text-align: center;
+}
+.fb-debug-chars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.fb-debug-char {
+  font-family: var(--font-zh);
+  font-size: 10.5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(0,0,0,.05);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.fb-debug-char-score {
+  font-family: var(--font-py);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--indigo);
+}
 
 /* ═════════════════════════════════════════════════════════════ */
 /*                    场景包选择 SCENARIO PACKS                    */
@@ -2642,6 +2820,9 @@ body.viewing-subs .state-subs { display: block; }
             <span class="fb-tip-icon">💡</span>
             <span class="fb-tip-text" id="fbTipText"></span>
           </div>
+
+          <!-- 评分调试明细：仅 ?debug=1 模式下可见 -->
+          <div class="fb-debug" id="fbDebug" aria-hidden="true"></div>
 
           <!-- Retry + share -->
           <div class="fb-actions">
@@ -4643,10 +4824,8 @@ body.viewing-subs .state-subs { display: block; }
       const startGuard = setTimeout(() => {
         if (!started) { _stopResumeTimer(); reject(new Error('start-timeout')); }
       }, 4000);
-      // 用 onstart 标记开始
-      const origMake = _makeUtterance;
-      // 把 onstart 挂到第一段
-      const firstU = origMake(segs[0], rate);
+      // 用 onstart 标记开始；把 onstart 挂到第一段
+      const firstU = _makeUtterance(segs[0], rate);
       firstU.onstart = () => { started = true; clearTimeout(startGuard); };
       firstU.onend   = () => _speakSegsBrowser(segs.slice(1), rate,
         () => resolve('browser'),
@@ -4923,64 +5102,136 @@ body.viewing-subs .state-subs { display: block; }
   function makeMockResult(referenceText, transcript, confidence) {
     const refNorm   = _normalizeZh(referenceText);
     const trNorm    = _normalizeZh(transcript);
+    // 相似度：阿语母语者的中文口音常导致 ASR 误识别 1-2 个字，
+    // calculateSimilarity 已包含"近音字宽容"，输出更宽松的 0-100 分。
     const sim       = calculateSimilarity(transcript, referenceText); // 0-100
 
-    // 置信度归一到 0-100，浏览器对中文的置信度通常偏低，这里做一次轻校准。
-    // confidence 在 [0,1]，0 表示未提供 → 给中性 75。
+    // 置信度归一到 0-100；浏览器对带口音的中文置信度普遍偏低，
+    // 不应让低置信度直接压低发音分 → 给一个较高的中性基线 82。
     let conf100;
     if (!confidence || confidence <= 0) {
-      conf100 = 75;
+      conf100 = 82;
     } else {
-      // 置信度 0.5 → 75，0.8 → 90，1.0 → 100；平滑曲线，避免标准发音被压低
-      conf100 = Math.min(100, 50 + confidence * 55);
+      // 置信度 0.4 → 82，0.7 → 92，1.0 → 100；曲线显著上移
+      conf100 = Math.min(100, 70 + confidence * 30);
     }
 
-    // 综合发音分：相似度为主导（80%），置信度辅助（20%）
-    let base = sim * 0.80 + conf100 * 0.20;
-
-    // 完全一致：直接给优秀分，不再随机扰动
-    if (refNorm && trNorm && refNorm === trNorm) {
-      base = Math.max(base, 92);
+    // ── 三项子分数（按新权重需要的原始量）────────────────────
+    // 1) 发音准确度 accuracy：以相似度为骨干，置信度仅微辅助；
+    //    再做"轻微口音容忍"的非线性映射：sim≥85→几乎满分；sim≥70→90+
+    let accRaw = sim * 0.85 + conf100 * 0.15;
+    // 非线性提升：把 [70,100] 段抬到 [88,100]，照顾轻微口音
+    if (sim >= 70) {
+      accRaw = Math.max(accRaw, 88 + (sim - 70) * 0.4);
+    } else if (sim >= 55) {
+      // [55,70] → [78,88]，仍是积极反馈
+      accRaw = Math.max(accRaw, 78 + (sim - 55) * (10 / 15));
     }
-    // 高相似度（≥90%）也保底优秀
-    if (sim >= 90) base = Math.max(base, 88);
 
-    const cl = v => Math.min(100, Math.max(0, Math.round(v)));
-    const pron = cl(base);
-
-    // 各子项分数：基于真实匹配，不再随机
-    const accuracy = pron;
-    const fluency  = trNorm.length === 0 ? 0
-                   : cl(60 + (trNorm.length / Math.max(1, refNorm.length)) * 35);
-    const completeness = refNorm.length === 0 ? 0
-                       : cl((Math.min(trNorm.length, refNorm.length) / refNorm.length) * 100);
-    const tone = pron; // 无 Azure 时无法独立判声调，与综合分一致
-
-    // 字级反馈：完全基于"该字是否在转写中按序出现"，不再随机
-    // 使用一次匹配指针，避免重复字被多次匹配
+    // 2) 句子完整度 completeness：参考字在转写中按序匹配比例
+    //    比简单 length 比值更准；允许少量乱序
     const refChars = Array.from(refNorm);
     const tArr     = Array.from(trNorm);
-    let p = 0;
+    let matchedSeq = 0;
+    let pSeq = 0;
+    for (const hz of refChars) {
+      let foundAt = -1;
+      // 在剩余转写中向前看最多 3 字，宽松匹配同序或轻微乱序
+      for (let k = pSeq; k < Math.min(tArr.length, pSeq + 4); k++) {
+        if (tArr[k] === hz) { foundAt = k; break; }
+      }
+      if (foundAt >= 0) { matchedSeq++; pSeq = foundAt + 1; }
+      else if (tArr.indexOf(hz, pSeq) >= 0) {
+        // 整段兜底，但不推进指针太多 — 容忍乱序
+        matchedSeq += 0.8;
+      }
+    }
+    let compRaw = refNorm.length === 0 ? 0
+                : (matchedSeq / refNorm.length) * 100;
+    // 完整度宽容：≥80% 匹配 → 视作完整朗读
+    if (compRaw >= 80) compRaw = Math.max(compRaw, 95);
+    else if (compRaw >= 60) compRaw = Math.max(compRaw, 82);
+
+    // 3) 朗读流畅度 fluency：转写非空 + 长度接近参考 → 高分
+    let fluRaw;
+    if (trNorm.length === 0) {
+      fluRaw = 0;
+    } else {
+      const lenRatio = Math.min(trNorm.length, refNorm.length) /
+                       Math.max(trNorm.length, refNorm.length);
+      // 长度比 1.0 → 100；0.7 → 88；0.5 → 78
+      fluRaw = 70 + lenRatio * 30;
+      // 置信度高 → 通常说明朗读连贯，叠加 5 分上限
+      fluRaw = Math.min(100, fluRaw + (confidence > 0.6 ? 5 : 0));
+    }
+
+    const cl = v => Math.min(100, Math.max(0, Math.round(v)));
+    const accuracy     = cl(accRaw);
+    const completeness = cl(compRaw);
+    const fluency      = cl(fluRaw);
+
+    // ── 总分：新权重 发音70% + 完整20% + 流畅10% ─────────────
+    let base = accuracy * 0.70 + completeness * 0.20 + fluency * 0.10;
+
+    // 完全一致：直接给优秀分
+    if (refNorm && trNorm && refNorm === trNorm) {
+      base = Math.max(base, 95);
+    }
+    // 高相似度（≥85%）保底优秀 — 朗读完整、发音基本正确即给高分
+    if (sim >= 85) base = Math.max(base, 90);
+    // 中高相似度（≥70%）保底良好
+    else if (sim >= 70) base = Math.max(base, 82);
+
+    const pron = cl(base);
+    const tone = accuracy; // 无 Azure 时无法独立判声调，与发音准确度同步
+
+    // ── 字级反馈：放宽容错；带口音也不轻易判 miss ──────────
+    let pChar = 0;
     const wlf = refChars.map(hz => {
       let found = false;
-      // 在剩余转写中查找该字（允许少量乱序，向前看 2 字）
-      for (let k = p; k < Math.min(tArr.length, p + 3); k++) {
-        if (tArr[k] === hz) { found = true; p = k + 1; break; }
+      // 主匹配窗口：向前看 4 字（容忍乱序）
+      for (let k = pChar; k < Math.min(tArr.length, pChar + 5); k++) {
+        if (tArr[k] === hz) { found = true; pChar = k + 1; break; }
       }
-      // 兜底：在整段转写中查找
+      // 兜底：在整段转写中存在即算识别
       if (!found && tArr.includes(hz)) found = true;
-      // 字级分数：识别到 → 跟综合分接近；未识别到 → 显著低分
-      const s = found ? cl(pron + 2) : cl(Math.max(35, pron - 35));
+      // 高总分时，即使该字未识别也给 near（口音问题，非真错）
+      let s;
+      if (found) {
+        s = cl(accuracy + 3);
+      } else if (pron >= 85) {
+        s = cl(Math.max(70, pron - 12));  // 高分时未识别 → near 级
+      } else if (pron >= 70) {
+        s = cl(Math.max(60, pron - 18));
+      } else {
+        s = cl(Math.max(40, pron - 28));
+      }
       return {
         word: hz, accuracyScore: s,
-        errorType: s >= 80 ? 'None' : s >= 55 ? 'Mispronunciation' : 'Missing',
+        errorType: s >= 78 ? 'None' : s >= 55 ? 'Mispronunciation' : 'Missing',
       };
     });
+
+    // ── 调试明细：保存计算过程，供 ?debug=1 模式展示 ────────
+    const debugDetail = {
+      ref: refNorm,
+      transcript: trNorm,
+      rawTranscript: transcript || '',
+      similarity: Math.round(sim * 10) / 10,
+      confidence: Math.round((confidence || 0) * 100) / 100,
+      conf100: Math.round(conf100),
+      accuracy, completeness, fluency,
+      weights: { accuracy: 0.70, completeness: 0.20, fluency: 0.10 },
+      formula: `${accuracy}×0.70 + ${completeness}×0.20 + ${fluency}×0.10 = ${(accuracy*0.7 + completeness*0.2 + fluency*0.1).toFixed(1)}`,
+      finalScore: pron,
+      charScores: wlf.map(w => ({ hz: w.word, score: w.accuracyScore })),
+    };
 
     return {
       pronunciationScore: pron, accuracyScore: accuracy, fluencyScore: fluency,
       completenessScore: completeness, toneScore: tone,
       transcript, wordLevelFeedback: wlf, mainSuggestion: null, source: 'fallback',
+      debugDetail,
     };
   }
 
@@ -5009,32 +5260,115 @@ body.viewing-subs .state-subs { display: block; }
       .replace(/[^\u4e00-\u9fff]/g, '')
       .trim();
   }
+
+  // ── 近音字 / 易混字宽容表 ───────────────────────────────
+  // 阿语母语学生常见的中文 ASR 误识别：
+  //   • zh/z、ch/c、sh/s 不分（卷舌音难） → 是/四、十/四、知/资 等
+  //   • r/l 易混 → 人/邻、热/乐
+  //   • h 与喉音差异 → 喝/和、河
+  //   • 鼻音 n/ng 不分 → 很/横、晚/王
+  //   • 同音异形字 → 在/再、做/坐、的/得
+  // 算 0.7 分相似（半匹配），让轻微口音不被全扣分
+  const _NEAR_CHAR_GROUPS = [
+    ['是','四','十','事','市','试'],
+    ['知','资','只','之'],
+    ['吃','次','池','迟'],
+    ['人','认','邻','您'],
+    ['热','乐','了','勒'],
+    ['再','在','载'],
+    ['做','坐','作','座'],
+    ['的','得','地','底'],
+    ['很','横','哼','恨'],
+    ['不','布','部','步'],
+    ['吗','妈','马','码'],
+    ['哥','歌','格','各'],
+    ['他','她','它','塔'],
+    ['和','喝','河','合'],
+    ['有','友','由','又'],
+    ['好','号','豪','耗'],
+    ['你','拟','尼','妮'],
+    ['我','握','卧'],
+    ['会','回','灰','汇'],
+    ['说','受','瘦','烁'],
+    ['请','轻','清','情'],
+    ['老','劳','牢','姥'],
+    ['学','雪','血','削'],
+    ['想','向','箱','响'],
+    ['去','取','曲','区'],
+    ['谢','写','邪','蟹'],
+    ['对','队','兑'],
+    ['天','田','添'],
+    ['年','念','黏'],
+    ['钱','前','千','浅'],
+    ['买','卖','迈','埋'],
+    ['菜','才','彩','踩'],
+    ['茶','查','差'],
+    ['看','刊','砍'],
+  ];
+  const _NEAR_CHAR_MAP = (() => {
+    const m = new Map();
+    for (const grp of _NEAR_CHAR_GROUPS) {
+      for (const ch of grp) {
+        const set = m.get(ch) || new Set();
+        for (const other of grp) if (other !== ch) set.add(other);
+        m.set(ch, set);
+      }
+    }
+    return m;
+  })();
+  function _isNearChar(a, b) {
+    if (a === b) return true;
+    const set = _NEAR_CHAR_MAP.get(a);
+    return !!(set && set.has(b));
+  }
+
   function calculateSimilarity(a, b) {
     if (!a || !b) return 0;
     const A = _normalizeZh(a), B = _normalizeZh(b);
     if (!A || !B) return 0;
     if (A === B) return 100;                 // 完全一致 → 满分
 
-    // 1) 字符多重集匹配率（正确处理重复字）
-    const freq = {};
-    for (const ch of B) freq[ch] = (freq[ch] || 0) + 1;
+    // 1) 字符多重集匹配率（包含近音字宽容）
+    //    精确匹配算 1.0 分，近音字算 0.7 分（轻微口音不大额扣分）
+    const freqExact = {};
+    for (const ch of B) freqExact[ch] = (freqExact[ch] || 0) + 1;
     let matched = 0;
-    for (const ch of A) {
-      if (freq[ch] > 0) { matched++; freq[ch]--; }
-    }
-    const charScore = (matched / B.length) * 100;
-
-    // 2) 顺序得分：基于编辑距离（Levenshtein），鼓励同序朗读
     const aArr = Array.from(A), bArr = Array.from(B);
+    // 第一遍：精确匹配优先
+    for (const ch of aArr) {
+      if (freqExact[ch] > 0) { matched += 1.0; freqExact[ch]--; }
+    }
+    // 第二遍：剩余字符尝试近音字宽容匹配
+    for (const ch of aArr) {
+      // 跳过已被精确匹配消耗的；剩余字符在 freqExact 之外，所以遍历 b 找近音
+      let bestKey = null;
+      for (const key in freqExact) {
+        if (freqExact[key] > 0 && _isNearChar(ch, key)) {
+          bestKey = key; break;
+        }
+      }
+      if (bestKey) { matched += 0.7; freqExact[bestKey]--; }
+    }
+    const charScore = Math.min(100, (matched / B.length) * 100);
+
+    // 2) 顺序得分：基于编辑距离（Levenshtein），但近音字替换只算 0.4 代价
     const m = aArr.length, n = bArr.length;
     const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
     for (let i = 0; i <= m; i++) dp[i][0] = i;
     for (let j = 0; j <= n; j++) dp[0][j] = j;
     for (let i = 1; i <= m; i++) {
       for (let j = 1; j <= n; j++) {
-        dp[i][j] = aArr[i-1] === bArr[j-1]
-          ? dp[i-1][j-1]
-          : 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
+        if (aArr[i-1] === bArr[j-1]) {
+          dp[i][j] = dp[i-1][j-1];
+        } else {
+          // 近音字替换：代价 0.4（半罚分）；其它替换/增删：代价 1
+          const subCost = _isNearChar(aArr[i-1], bArr[j-1]) ? 0.4 : 1;
+          dp[i][j] = Math.min(
+            dp[i-1][j-1] + subCost,
+            dp[i-1][j] + 1,
+            dp[i][j-1] + 1
+          );
+        }
       }
     }
     const editScore = (1 - dp[m][n] / Math.max(m, n)) * 100;
@@ -5042,10 +5376,16 @@ body.viewing-subs .state-subs { display: block; }
     // 3) 长度匹配：完整朗读不被错扣分（短缺一个字也只扣一点）
     const lenScore = (1 - Math.abs(m - n) / Math.max(m, n)) * 100;
 
-    // 综合：字符匹配 50% + 顺序 35% + 长度 15%
-    return Math.max(0, Math.min(100,
-      charScore * 0.50 + editScore * 0.35 + lenScore * 0.15
-    ));
+    // 综合：字符匹配 55% + 顺序 30% + 长度 15%（更看重字面覆盖，宽容口音）
+    const raw = charScore * 0.55 + editScore * 0.30 + lenScore * 0.15;
+
+    // 口音容忍：把 [60,100] 段非线性抬升一点（小幅口音 → 不被严扣）
+    let result = raw;
+    if (raw >= 60) {
+      // raw 60 → 65, 80 → 87, 95 → 97
+      result = raw + (raw - 60) * 0.15;
+    }
+    return Math.max(0, Math.min(100, result));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -5094,7 +5434,7 @@ body.viewing-subs .state-subs { display: block; }
         statusAr.textContent = 'جاري التحليل…'; statusZh.textContent = '正在分析…';
         statusAr.style.color = '#f59e0b'; statusZh.style.color = '#f59e0b';
         wavebar.classList.remove('active'); break;
-      case MIC_STATE.ERROR:
+      case MIC_STATE.ERROR: {
         btn.classList.add('error'); icon.textContent = '❗';
         wavebar.classList.remove('active');
         const msgs = {
@@ -5114,6 +5454,7 @@ body.viewing-subs .state-subs { display: block; }
           setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
         }
         break;
+      }
     }
   }
 
@@ -5178,7 +5519,9 @@ body.viewing-subs .state-subs { display: block; }
         const isName = chars[ci].name === true;
         const cls = 'hz' + (isName ? ' is-name' : '');
         // 把每个字的拼音用 <ruby> 排在汉字正上方，方便跟读
-        const py = escHtml(chars[ci].py || '');
+        // pyDisplay 返回 HTML（含 <span class="py-macron"> 用 CSS 绘制第一声横线），
+        // 因此不能再 escHtml，否则 span 会被转义成文本。
+        const py = pyDisplay(chars[ci].py || '');
         html += `<span class="${cls}"><ruby>${escHtml(ch)}<rt class="hz-py">${py}</rt></ruby>${badge}</span>` + nameTagFor(ci);
         ci++;
       } else {
@@ -5194,12 +5537,19 @@ body.viewing-subs .state-subs { display: block; }
     setTimeout(() => {
       const lesson = LESSONS[currentIndex];
       document.getElementById('chinese').innerHTML  = renderZhWithBadges(lesson.zh, lesson.chars);
-      document.getElementById('pinyin').textContent  = lesson.py;
+      document.getElementById('pinyin').innerHTML   = pyDisplay(lesson.py);
       document.getElementById('meaning').textContent = lesson.ar;
       const hintEl  = document.getElementById('hintText');
       const hintRow = hintEl.closest('.hint-row');
       if (lesson.hint) {
-        hintEl.innerHTML = lesson.hint.text;
+        // hint 文本里可能嵌入带声调拼音（如 "安 Ān 是第一声"、"<strong>不 bú</strong>"）。
+        // 先把大写带声调字母转为小写，再把第一声字母（macron）换为
+        // <span class="py-macron"> 用 CSS 绘制横线，彻底脱离字体回退。
+        hintEl.innerHTML = lesson.hint.text
+          .replace(/[ĀÁǍÀĒÉĚÈĪÍǏÌŌÓǑÒŪÚǓÙǕǗǙǛ]/g,
+                   ch => _UPPER_TONED_TO_LOWER[ch] || ch)
+          .replace(/[āēīōūǖ]/g,
+                   ch => '<span class="py-macron">' + (_MACRON_TO_BASE[ch] || ch) + '</span>');
         hintRow.style.display = 'flex';
       } else {
         hintRow.style.display = 'none';
@@ -5613,6 +5963,9 @@ body.viewing-subs .state-subs { display: block; }
       tipEl.style.display = 'none';
     }
 
+    // 渲染评分调试明细（?debug=1 模式下可见）
+    renderScoreDebug(score, transcript, result);
+
     card.classList.add(tier);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       card.classList.add('show');
@@ -5660,7 +6013,7 @@ body.viewing-subs .state-subs { display: block; }
       const div = document.createElement('div');
       div.className = `fb-char ${quality}`;
       div.style.animationDelay = `${i * 0.07}s`;
-      div.innerHTML = `<span class="fb-char-py">${c.py}</span><span class="fb-char-hz">${c.hz}</span>`;
+      div.innerHTML = `<span class="fb-char-py">${pyDisplay(c.py)}</span><span class="fb-char-hz">${c.hz}</span>`;
       container.appendChild(div);
     });
   }
@@ -5683,6 +6036,77 @@ body.viewing-subs .state-subs { display: block; }
     return val >= 80 ? 'ok' : val >= 58 ? 'near' : 'miss';
   }
 
+  // ── 评分调试明细渲染 ────────────────────────────────────
+  // 仅在 URL 带 ?debug=1 时通过 CSS 显示；展示识别文本、相似度、
+  // 单字得分、各子项分数与总分计算过程，方便排查"为什么是这个分数"
+  function renderScoreDebug(score, transcript, result) {
+    const el = document.getElementById('fbDebug');
+    if (!el) return;
+    const d = result && result.debugDetail;
+    if (!d) {
+      // Azure 真实评估或其他无 debugDetail 的情况：展示基础信息
+      el.innerHTML = `
+        <div class="fb-debug-title">Score Debug · 评分明细</div>
+        <div class="fb-debug-row">
+          <span class="fb-debug-key">Source</span>
+          <span class="fb-debug-val">${escHtml((result && result.source) || 'unknown')}</span>
+        </div>
+        <div class="fb-debug-row">
+          <span class="fb-debug-key">Transcript · 识别文本</span>
+          <span class="fb-debug-val zh">${escHtml(transcript || '(空)')}</span>
+        </div>
+        <div class="fb-debug-row">
+          <span class="fb-debug-key">Final Score · 总分</span>
+          <span class="fb-debug-val">${score}</span>
+        </div>
+      `;
+      return;
+    }
+    const charsHtml = (d.charScores || []).map(c =>
+      `<span class="fb-debug-char">${escHtml(c.hz)}<span class="fb-debug-char-score">${c.score}</span></span>`
+    ).join('');
+    el.innerHTML = `
+      <div class="fb-debug-title">Score Debug · 评分明细</div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Reference · 参考</span>
+        <span class="fb-debug-val zh">${escHtml(d.ref || '')}</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Transcript · 识别</span>
+        <span class="fb-debug-val zh">${escHtml(d.transcript || '(空)')}</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Similarity · 相似度</span>
+        <span class="fb-debug-val">${d.similarity}%</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">ASR Confidence · 置信度</span>
+        <span class="fb-debug-val">${d.confidence} → ${d.conf100}</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Accuracy · 发音 (70%)</span>
+        <span class="fb-debug-val">${d.accuracy}</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Completeness · 完整 (20%)</span>
+        <span class="fb-debug-val">${d.completeness}</span>
+      </div>
+      <div class="fb-debug-row">
+        <span class="fb-debug-key">Fluency · 流畅 (10%)</span>
+        <span class="fb-debug-val">${d.fluency}</span>
+      </div>
+      <div class="fb-debug-formula">${escHtml(d.formula)}</div>
+      <div class="fb-debug-row" style="margin-top:5px">
+        <span class="fb-debug-key">Final · 总分</span>
+        <span class="fb-debug-val" style="color:var(--indigo);font-size:13px">${d.finalScore}</span>
+      </div>
+      <div class="fb-debug-row" style="flex-direction:column;align-items:stretch">
+        <span class="fb-debug-key" style="margin-bottom:3px">Per-char · 单字得分</span>
+        <div class="fb-debug-chars">${charsHtml}</div>
+      </div>
+    `;
+  }
+
   function pickBestTip(chars, score) {
     if (score >= 92) return { html: null, spoken: null };
     const container = document.getElementById('fbChars');
@@ -5700,7 +6124,8 @@ body.viewing-subs .state-subs { display: block; }
     const toneAr = tone ? ` · ${toneArMap[tone]}` : '';
     const toneZh = tone ? `（第${tone}声）` : '';
     const hzSafe = escHtml(c.hz || '');
-    const pySafe = escHtml(c.py || '');
+    // pyDisplay 内部已做 HTML 转义，返回安全 HTML（含 <span class="py-macron">）
+    const pySafe = pyDisplay(c.py || '');
     const html =
       `<strong style="color:#dc2626">${hzSafe}</strong> ` +
       `<span style="font-family:var(--font-py);color:#dc2626;font-weight:700">${pySafe}</span>` +
@@ -6082,7 +6507,7 @@ body.viewing-subs .state-subs { display: block; }
   function openShare() {
     const lesson = LESSONS[currentIndex];
     document.getElementById('shareZh').innerHTML      = renderZhWithBadges(lesson.zh, lesson.chars);
-    document.getElementById('sharePy').textContent    = lesson.py;
+    document.getElementById('sharePy').innerHTML      = pyDisplay(lesson.py);
     document.getElementById('shareScore').textContent = _lastScore;
     document.getElementById('shareOverlay').classList.add('show');
   }
@@ -6673,14 +7098,128 @@ body.viewing-subs .state-subs { display: block; }
     'ū':'u','ú':'u','ǔ':'u','ù':'u',
     'ǖ':'ü','ǘ':'ü','ǚ':'ü','ǜ':'ü',
   };
+
+  // ── 拼音"显示态"归一化（v6 根因终极修复）────────────────────────
+  // 历史诊断：
+  //   v1-v4：尝试通过加字体栈/Web 字体/OpenType 特性，让浏览器找到能正确渲染
+  //          'Ā' 的字体；但这依赖用户网络能加载 Google Fonts、且字体子集完整，
+  //          实测某些环境下仍出现 NFD 分解渲染（视觉上 "A ¯ n" 分离）。
+  //   v5：把大写带声调字母 → 小写带声调字母（Ā→ā），消除"大写带声调字母字体
+  //       缺字"问题。但用户反馈：连小写 'ā'（macron 第一声）也被分解显示！
+  //       说明问题不在大小写，而在 **macron 字符本身**：用户环境字体缺第一声
+  //       macron 字形，但 háček/grave/acute 字形正常（v5 截图证实其它声调贴合）。
+  //   v6 根本性修复：DOM 里不再放任何 macron 字符（U+0100/0101 等），所有第一声
+  //       字母用 **基础 ASCII 字母 + CSS 伪元素 ::before 绘制的横线** 渲染。
+  //       这样：1) 字体完全无关——浏览器不再可能找不到字形；
+  //              2) 横线位置由 CSS 精确控制，永远贴合字母上方；
+  //              3) 字宽由 ASCII 字母决定，与同行其他字母完全一致，无空隙。
+  //
+  // 函数 pyDisplay 返回 **HTML 安全字符串**（不是纯文本），调用方需用 innerHTML。
+  // 函数 pyDisplayText 返回 **纯文本**（无 HTML，用于 canvas、TTS 等场景）。
+  const _UPPER_TONED_TO_LOWER = {
+    'Ā':'ā','Á':'á','Ǎ':'ǎ','À':'à',
+    'Ē':'ē','É':'é','Ě':'ě','È':'è',
+    'Ī':'ī','Í':'í','Ǐ':'ǐ','Ì':'ì',
+    'Ō':'ō','Ó':'ó','Ǒ':'ǒ','Ò':'ò',
+    'Ū':'ū','Ú':'ú','Ǔ':'ǔ','Ù':'ù',
+    'Ǖ':'ǖ','Ǘ':'ǘ','Ǚ':'ǚ','Ǜ':'ǜ',
+  };
+  // 第一声字符（带 macron）→ 基础字母（CSS 绘制横线）
+  const _MACRON_TO_BASE = {
+    'ā':'a', 'ē':'e', 'ī':'i', 'ō':'o', 'ū':'u', 'ǖ':'ü',
+  };
+  // HTML 转义（避免拼音里的 ' " < > 影响 innerHTML）
+  function _escPy(c) {
+    return c === '&' ? '&amp;'
+         : c === '<' ? '&lt;'
+         : c === '>' ? '&gt;'
+         : c === '"' ? '&quot;'
+         : c === "'" ? '&#39;'
+         : c;
+  }
+  // 大写带 macron 字母 → 大写 ASCII（用于 pyDisplay 渲染时保留专名首字母大写）
+  // 例如：Ā → 'A' + .py-macron 横线；ā → 'a' + .py-macron 横线
+  // 普通大写 ASCII 字母（如 'Zhōng' 的 'Z'、'Hàn' 的 'H'）在所有字体里都没有
+  // 缺字问题，保留即可。其它三种声调（háček/grave/acute）的大写带声调字母在
+  // 当前 HSK1-3 数据中不出现（所有专名都是第一声开头：Ān、Zhōng、Hàn），
+  // 故只需处理 macron 的大写版本。若未来扩展专名遇到，会自动 fallback 转小写。
+  const _MACRON_UPPER_TO_BASE = {
+    'Ā':'A', 'Ē':'E', 'Ī':'I', 'Ō':'O', 'Ū':'U', 'Ǖ':'Ü',
+  };
+  // 返回 HTML：第一声字母用 <span class="py-macron"> 包裹基础字母（保留大小写）
+  function pyDisplay(py) {
+    if (!py) return '';
+    let out = '';
+    for (const ch of py) {
+      // 1) 大写带 macron（如 Ā）→ 保留为大写 ASCII 'A' + 横线 span
+      if (_MACRON_UPPER_TO_BASE[ch]) {
+        out += '<span class="py-macron">' + _escPy(_MACRON_UPPER_TO_BASE[ch]) + '</span>';
+        continue;
+      }
+      // 2) 小写带 macron（如 ā）→ 小写 ASCII 'a' + 横线 span
+      if (_MACRON_TO_BASE[ch]) {
+        out += '<span class="py-macron">' + _escPy(_MACRON_TO_BASE[ch]) + '</span>';
+        continue;
+      }
+      // 3) 其它三种声调的大写带声调字母（Á Ǎ À Ě Ǐ Ǒ Ǔ 等）→ 降为小写，
+      //    避免某些字体也缺这些大写字形（虽当前数据未触发，仍做兜底）。
+      //    保留普通 ASCII 大写字母（Z、H 等专名首字母）和所有非声调字符。
+      if (_UPPER_TONED_TO_LOWER[ch]) {
+        out += _escPy(_UPPER_TONED_TO_LOWER[ch]);
+        continue;
+      }
+      // 4) 普通字符（ASCII 大小写、小写带声调、空格、ü 等）原样保留
+      out += _escPy(ch);
+    }
+    return out;
+  }
+  // 返回纯文本（canvas / TTS / 保存等场景用）
+  // 不替换 macron 字符（canvas 自行处理），但保留大写专名首字母
+  function pyDisplayText(py) {
+    if (!py) return '';
+    let out = '';
+    for (const ch of py) {
+      // 大写带声调字母（除 macron 外）转小写，避免字体缺字；
+      // macron 字母（大小写）保持原样（canvas fillText 通常能正常渲染）
+      if (_MACRON_UPPER_TO_BASE[ch] || _MACRON_TO_BASE[ch]) {
+        out += ch;
+      } else if (_UPPER_TONED_TO_LOWER[ch]) {
+        out += _UPPER_TONED_TO_LOWER[ch];
+      } else {
+        out += ch;
+      }
+    }
+    return out;
+  }
   function detectTone(syllable) {
     for (const ch of syllable) {
-      if (TONE_MAP[ch] != null) return TONE_MAP[ch];
+      // 先做大写→小写归一，再查 TONE_MAP（专名首字母 Ān 也能识别为第一声）
+      const lc = _UPPER_TONED_TO_LOWER[ch] || ch;
+      if (TONE_MAP[lc] != null) return TONE_MAP[lc];
     }
     return 0; // 轻声
   }
+  // 大写带声调字母 → 大写基础字母（用于 stripPinyin 保留专名首字母大写）
+  // 例如 Ā → 'A'，stripPinyin('Ān') → 'An'，下方教学显示 'An¹'（按 GB/T 16159 规范）
+  const _UPPER_TONED_TO_UPPER_BASE = {
+    'Ā':'A','Á':'A','Ǎ':'A','À':'A',
+    'Ē':'E','É':'E','Ě':'E','È':'E',
+    'Ī':'I','Í':'I','Ǐ':'I','Ì':'I',
+    'Ō':'O','Ó':'O','Ǒ':'O','Ò':'O',
+    'Ū':'U','Ú':'U','Ǔ':'U','Ù':'U',
+    'Ǖ':'Ü','Ǘ':'Ü','Ǚ':'Ü','Ǜ':'Ü',
+  };
   function stripPinyin(syllable) {
-    return syllable.split('').map(c => TONE_STRIP[c] || c).join('');
+    // strip 声调符号，但保留专名首字母大小写：
+    //   • 大写带声调字母（Ā Ē 等）→ 大写基础字母（A E）
+    //   • 小写带声调字母（ā é 等）→ 小写基础字母（a e）
+    //   • 其它字符原样保留（ASCII 大小写、ü 等）
+    // 例：'Ān' → 'An'（下方教学显示 'An¹'，符合专名首字母大写规范）
+    //     'wǒ' → 'wo'（下方教学显示 'wo³'）
+    return syllable.split('').map(c => {
+      if (_UPPER_TONED_TO_UPPER_BASE[c]) return _UPPER_TONED_TO_UPPER_BASE[c];
+      return TONE_STRIP[c] || c;
+    }).join('');
   }
 
   // SVG 曲线路径（基于 38x36 viewBox，y=0 顶，y=36 底）
@@ -6761,7 +7300,7 @@ body.viewing-subs .state-subs { display: block; }
   updateComboUI();      // 显示已存在的 combo
   renderCategories();   // 渲染一级场景（首页默认视图）
   // 不立即调用 showSentence —— 用户先选场景、再选分支，最后进入句子页
-  // voices 由顶部 _loadVoices() + onvoiceschanged 自动处理
+  // voices 由顶部 _waitForVoices() + onvoiceschanged 自动处理
 
 </script>
 
