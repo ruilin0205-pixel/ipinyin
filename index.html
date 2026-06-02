@@ -4471,7 +4471,7 @@ body.viewing-subs .state-subs { display: block; }
               { hz: '我', py: 'wǒ', lvl: 1, tips: ['我 wǒ 是第三声。', '声音先下来一点，再上去。'] },
               { hz: '喜', py: 'xǐ', lvl: 1, tips: ['喜 xǐ 是第三声。', '声音先下来一点，再上去。'] },
               { hz: '欢', py: 'huan', lvl: 1, tips: ['欢 huan 读轻声。', '声音很短，跟着上一个字读出来。'] },
-              { hz: '红', py: 'hóng', lvl: 5, tips: ['红 hóng 是第二声。', '声音从中间一直往上。'] },
+              { hz: '红', py: 'hóng', lvl: 3, tips: ['红 hóng 是第二声。', '声音从中间一直往上。'] },
               { hz: '色', py: 'sè', lvl: 2, tips: ['色 sè 是第四声。', '声音从高一下子下来。'] }
             ]
           },
@@ -5139,9 +5139,11 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   // ── Layer 3: 公开 TTS 代理兜底（Google Translate TTS）─────────
-  // 业界事实标准 endpoint，免费、无 key、CORS 友好
-  // 限制：每段 ≤ 200 字符；长句切段串行播放
-  // 慢速模式通过 HTMLAudioElement.playbackRate 实现
+  // 业界事实标准 endpoint，免费、无 key；长句切段串行播放（每段 ≤ 200 字符）。
+  // ⚠️ 注意：该端点**不返回** Access-Control-Allow-Origin，并非 CORS 友好。
+  //    但纯音频播放（仅 audio.play()，不读取采样数据）无需 CORS，
+  //    因此 <audio> 切勿设置 crossOrigin —— 一旦设了就会触发 CORS 校验并加载失败。
+  // 慢速模式通过 HTMLAudioElement.playbackRate 实现。
   function _speakWithProxy(text, playbackRate) {
     return new Promise((resolve, reject) => {
       _proxyAborted = false;
@@ -5154,7 +5156,10 @@ body.viewing-subs .state-subs { display: block; }
         const url = 'https://translate.google.com/translate_tts'
                   + '?ie=UTF-8&client=tw-ob&tl=zh-CN&q=' + encodeURIComponent(seg);
         const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
+        // 不要设置 crossOrigin：该音频仅用于 .play() 播放，从不读取采样数据
+        // （未喂入 AudioContext/canvas），因此无需 CORS。而 Google 翻译 TTS 端点
+        // 不返回 Access-Control-Allow-Origin，一旦设 crossOrigin='anonymous'
+        // 就会触发 CORS 校验并导致加载失败，使第三层兜底发音彻底失效。
         audio.preload = 'auto';
         audio.playbackRate = playbackRate || 1.0;
         _proxyAudioEl = audio;
@@ -5546,6 +5551,13 @@ body.viewing-subs .state-subs { display: block; }
 
   const MIC_STATE = { IDLE: 'idle', LISTENING: 'listening', ANALYZING: 'analyzing', ERROR: 'error' };
 
+  // 错误态「N 秒后自动回到 IDLE」的定时器句柄。
+  //   错误态期间用户可立即再次点麦克风（toggleRecording 只拦 playing/countdown/analyzing），
+  //   若不清除这个定时器，它会在新一轮录音(LISTENING)进行中途触发 setMicState(IDLE)，
+  //   把按钮 UI 错误地重置成「现在说」，与实际仍在录音的状态脱节。
+  //   解决：每次进入 setMicState 时先清掉上一次排队的恢复定时器。
+  let _micErrorResetTimer = null;
+
   function setMicState(state, errorType) {
     const btn      = document.getElementById('micBtn');
     const icon     = document.getElementById('micBtnIcon');
@@ -5553,6 +5565,8 @@ body.viewing-subs .state-subs { display: block; }
     const statusAr = document.getElementById('micStatusAr');
     const statusZh = document.getElementById('micStatusZh');
     const wavebar  = document.getElementById('soundwaveBar');
+    // 任何状态切换都先取消上一次错误态排队的「自动回 IDLE」定时器
+    if (_micErrorResetTimer) { clearTimeout(_micErrorResetTimer); _micErrorResetTimer = null; }
     btn.classList.remove('recording', 'analyzing', 'error');
     switch (state) {
       case MIC_STATE.IDLE:
@@ -5602,9 +5616,9 @@ body.viewing-subs .state-subs { display: block; }
         if (errorType === 'not-allowed') {
           const help = document.getElementById('micPermHelp');
           if (help) help.hidden = false;
-          setTimeout(() => setMicState(MIC_STATE.IDLE), 4000);
+          _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 4000);
         } else {
-          setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
+          _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
         }
         break;
     }
@@ -6765,6 +6779,8 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   // 把分享预览渲染到 canvas，方便下载/原生分享
+  // ⚠️ 调用前应先 await _ensureCanvasFonts()，否则冷启动/慢网下 web font 未就绪，
+  //    canvas 会回退到系统字体，阿拉伯语字符出现字距错乱 / 点状粘连（与证书同源问题）。
   function renderShareToCanvas() {
     const canvas = document.getElementById('shareCanvas');
     const ctx = canvas.getContext('2d');
@@ -6835,6 +6851,26 @@ body.viewing-subs .state-subs { display: block; }
     ctx.closePath();
     if (fill)   ctx.fill();
     if (stroke) ctx.stroke();
+  }
+
+  // canvas 绘制前确保所需 web font 已加载（分享图 + 证书共用）。
+  //   document.fonts.load 按"字体族 + 字重"加载对应字体文件（px 大小不影响加载哪个文件），
+  //   所以每个 族+字重 组合声明一次即可覆盖该族全部字号的使用。
+  //   任何失败都吞掉、继续渲染（回退系统字体也不阻塞下载）。
+  async function _ensureCanvasFonts() {
+    try {
+      if (document.fonts && document.fonts.load) {
+        await Promise.all([
+          document.fonts.load('700 56px "IBM Plex Sans Arabic"'),
+          document.fonts.load('600 22px "IBM Plex Sans Arabic"'),
+          document.fonts.load('500 22px "IBM Plex Sans Arabic"'),
+          document.fonts.load('500 96px "Noto Sans SC"'),
+          document.fonts.load('500 36px "Noto Sans SC"'),
+          document.fonts.load('800 96px Nunito'),
+          document.fonts.load('600 22px Nunito'),
+        ]);
+      }
+    } catch (e) { /* 字体加载失败也继续渲染，至少回退到系统字体而不阻塞 */ }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -6933,16 +6969,20 @@ body.viewing-subs .state-subs { display: block; }
     }
   }
 
-  function downloadShare() {
+  async function downloadShare() {
+    await _ensureCanvasFonts();
     renderShareToCanvas();
     const canvas = document.getElementById('shareCanvas');
     downloadCanvasImage(canvas, `pronunciation-${_lastScore}-${Date.now()}.png`);
   }
 
   async function nativeShare() {
+    await _ensureCanvasFonts();
     renderShareToCanvas();
     const canvas = document.getElementById('shareCanvas');
     canvas.toBlob(async blob => {
+      // toBlob 失败（极少数浏览器返回 null）→ 退回下载路径，避免 new File([null]) 异常
+      if (!blob) { downloadShare(); return; }
       const file = new File([blob], 'pronunciation.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
@@ -7782,11 +7822,24 @@ body.viewing-subs .state-subs { display: block; }
   function detectTone(syllable) {
     for (const ch of syllable) {
       if (TONE_MAP[ch] != null) return TONE_MAP[ch];
+      // 大小写无关：人名首字 / 句首大写音节（如「安 Ān」）的声调符号是大写元音，
+      //   TONE_MAP 只收了小写，直接查会漏判成轻声。这里回退用小写再查一次。
+      const lower = ch.toLowerCase();
+      if (lower !== ch && TONE_MAP[lower] != null) return TONE_MAP[lower];
     }
     return 0; // 轻声
   }
   function stripPinyin(syllable) {
-    return syllable.split('').map(c => TONE_STRIP[c] || c).join('');
+    return syllable.split('').map(c => {
+      if (TONE_STRIP[c]) return TONE_STRIP[c];
+      // 同理处理大写声调元音（Ān → An），并保留首字母大写以维持人名/句首样式
+      const lower = c.toLowerCase();
+      if (lower !== c && TONE_STRIP[lower]) {
+        const base = TONE_STRIP[lower];
+        return base.charAt(0).toUpperCase() + base.slice(1);
+      }
+      return c;
+    }).join('');
   }
 
   // SVG 曲线路径（基于 38x36 viewBox，y=0 顶，y=36 底）
