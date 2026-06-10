@@ -5384,42 +5384,155 @@ body.viewing-subs .state-subs { display: block; }
     throw new Error('Azure key not configured');
   }
 
-  // Fallback：浏览器 SpeechRecognition 模拟评分（仅演示用）
+  // Fallback：浏览器 SpeechRecognition 模拟评分（Azure 配置失败时的降级路径）
+  //  ★ 与 startFallbackRecognition() 严格同构 —— 两者共用且只用：
+  //      候选选择   pickBestSpeechCandidate()
+  //      候选快照   snapshotSpeechResults()
+  //      评分出口   scoreFallbackResult()（内部统一 _normalizeZh /
+  //                 calculateSimilarity / makeMockResult）
+  //      参考文本   referenceText 由 startRecording 原样传入，两条路径同源
+  //    会话参数也完全一致：interimResults=true、maxAlternatives=5、
+  //    final 优先 / 高相似 interim 兜底 / onerror 用快照救回 / 只定稿一次。
+  //    两者唯一的差别是"结果如何送出"：本函数通过 Promise resolve 给
+  //    startMediaRecorder.onstop → handleAssessmentResult；
+  //    startFallbackRecognition 直接调用 handleAssessmentResult。
+  //    评分语义本身没有任何分叉。
+  //  失败语义（与 handleAssessmentResult 的映射一致）：
+  //      null        → "没听清，请再试一次"（不评假低分）
+  //      undefined   → 麦克风权限被拒
+  //      'generic'   → 识别暂时不可用，请重试
+  //      'unsupported' → 浏览器不支持语音评测
   async function assessWithFallback(audioBlob, referenceText) {
     return new Promise(resolve => {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { resolve(makeMockResult(referenceText, '', 0.72)); return; }
-      const rec = new SR();
-      rec.lang = 'zh-CN'; rec.continuous = false;
-      rec.interimResults = false; rec.maxAlternatives = 5;
-      rec.onresult = e => {
-        // 在多个候选中，选与参考文本最相似的那一个 —— 浏览器有时
-        // 会把次优候选放到第一位，原代码无脑取 [0] 会导致标准发音被误判
-        const alts = e.results[0];
-        let bestText = '', bestConf = 0, bestSim = -1;
-        for (let i = 0; i < alts.length; i++) {
-          const t  = (alts[i].transcript || '').trim();
-          const c  = alts[i].confidence || 0;
-          const sm = calculateSimilarity(t, referenceText);
-          // 主排序按相似度，相似度相同时取置信度更高的
-          if (sm > bestSim || (sm === bestSim && c > bestConf)) {
-            bestSim = sm; bestText = t; bestConf = c;
-          }
+      // 统一配置工厂：与 startFallbackRecognition 完全相同的
+      // lang / continuous / interimResults / maxAlternatives
+      const rec = createZhRecognition();
+      if (!rec) { resolve('unsupported'); return; }
+
+      let _handled      = false;
+      let _lastSnapshot = null;
+      let _safetyTimer  = null;
+      let _safetyGrace  = null;
+
+      const clearSafety = () => {
+        if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = null; }
+        if (_safetyGrace) { clearTimeout(_safetyGrace); _safetyGrace = null; }
+      };
+      // 唯一出口：保证 Promise 必然且只 resolve 一次，
+      // 调用方（startMediaRecorder.onstop → handleAssessmentResult）
+      // 绝不会卡在"正在评分"。
+      const settle = (v) => {
+        if (_handled) return;
+        _handled = true;
+        clearSafety();
+        resolve(v);
+      };
+
+      // 统一收口：候选 → pickBestSpeechCandidate → scoreFallbackResult。
+      // 不可靠（空 / 截断 / 非中文）→ settle(null)，让学生重试。
+      const finalize = (snapshot) => {
+        if (_handled) return;
+        const best = pickBestSpeechCandidate(snapshot, referenceText);
+        const result = scoreFallbackResult(best, referenceText);
+        if (DEBUG) {
+          console.log('[assessWithFallback] best candidate:', best);
+          debugLogAssessment({
+            path: 'fallback(Azure降级)', ref: referenceText, best, result,
+            reason: result === null ? getUnreliableReason(best, referenceText) : null,
+          });
         }
-        resolve(makeMockResult(referenceText, bestText, bestConf || 0.72));
+        settle(result);
       };
+
+      rec.onresult = e => {
+        // 收集全部 final + interim 候选（所有 result × alternatives）；
+        // final 优先定稿，仅 interim 时等 final 或 onend 兜底。
+        _lastSnapshot = snapshotSpeechResults(e.results);
+        const hasFinal = _lastSnapshot.some(s => s.isFinal);
+        if (hasFinal) finalize(_lastSnapshot);
+      };
+
+      // onnomatch：识别器没把握给结果 → 温和"没听清"，绝不评低分；
+      // 已有快照先救回这次朗读。
+      rec.onnomatch = () => {
+        if (!_handled && _lastSnapshot && _lastSnapshot.length) {
+          finalize(_lastSnapshot);
+          return;
+        }
+        settle(null);
+      };
+
       rec.onerror = e => {
-        if (e.error === 'no-speech')    resolve(null);
-        else if (e.error === 'not-allowed') resolve(undefined);
-        else resolve(makeMockResult(referenceText, '', 0.5));
+        // 出错前已拿到候选快照 → 优先用快照走统一判定
+        if (!_handled && _lastSnapshot && _lastSnapshot.length) {
+          finalize(_lastSnapshot);
+          return;
+        }
+        // 全部走温和提示，没有任何分支会生成分数：
+        if      (e.error === 'no-speech')   settle(null);
+        else if (e.error === 'not-allowed') settle(undefined);
+        // iOS：服务被禁 / 语言不支持 → 如实提示"不支持"，不重试不评分
+        else if (e.error === 'service-not-allowed' || e.error === 'language-not-supported')
+          settle('unsupported');
+        // 麦克风硬件/采集不可用 → 走权限指引
+        else if (e.error === 'audio-capture') settle(undefined);
+        else settle('generic');
       };
-      rec.onend = () => {};
+
+      rec.onend = () => {
+        // 移动端兜底：会话结束但没有 final → 用最后一次 interim 快照；
+        // 什么都没有 → 当作"没听清"（顺带保证 Promise 必 resolve，
+        // 按钮经 handleAssessmentResult 必然离开"正在评分"态）。
+        if (!_handled && _lastSnapshot && _lastSnapshot.length) {
+          finalize(_lastSnapshot);
+          return;
+        }
+        settle(null);
+      };
+
       try { rec.start(); recognition = rec; }
-      catch(e) { resolve(makeMockResult(referenceText, '', 0.6)); }
+      catch(e) {
+        if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) settle(undefined);
+        else settle('generic');
+        return;
+      }
+
+      // 防卡死看门狗：识别器挂起时主动收束。
+      // 一级：超时 stop() → 触发正常 onresult/onend 兜底链；
+      // 二级：stop() 后 1.5 秒仍无事件 → 有快照统一判定，否则 settle(null)。
+      _safetyTimer = setTimeout(() => {
+        try { rec.stop(); } catch(err) {}
+        _safetyGrace = setTimeout(() => {
+          if (_handled) return;
+          if (_lastSnapshot && _lastSnapshot.length) finalize(_lastSnapshot);
+          else settle(null);
+        }, 1500);
+      }, calcRecordTimeoutMs());
     });
   }
 
+  //  makeMockResult —— 浏览器 fallback 估分
+  //  ⚠️ 本质是"识别文本相似度估分"，不是专业发音评测：分数表达的是
+  //  "浏览器识别出的文字与目标句有多像"，无法分辨声调/音色细节。
+  //  因此它的首要纪律是：识别失败 ≠ 学生发音差。
+  //
+  //  入口闸门（与 scoreFallbackResult 同源，双保险）：
+  //    transcript 为空 / 明显不可靠（单个无关字、与目标句完全无关、
+  //    长句被截断、非中文 —— 见 isUnreliableRecognition）时直接
+  //    返回 null（= retry 状态，handleAssessmentResult 会显示
+  //    「没听清，请再试一次。」），绝不把识别失败换算成 0-30 的低分。
+  //    这正是"标准发音被手机识别错后显示 19 分"的根治点：旧公式里
+  //    空转写 = 相似度 0 + 置信度 20% 权重 ≈ 16-19 分。
+  //
+  //  通过闸门后的分数走向（公式未动，没有任何"移动端加分"或抬高下限）：
+  //    similarity 高   → 分数正常偏高（≥90 保底 88，完全一致保底 92）；
+  //    similarity 中等 → 分数中等；
+  //    similarity 低但识别可靠（确实读出了相关的中文内容）→ 允许低分，
+  //    这是真实的练习反馈，不拦截。
   function makeMockResult(referenceText, transcript, confidence) {
+    // ── 可靠性闸门：只在识别结果可靠时生成分数 ──────────────────
+    if (isUnreliableRecognition({ transcript }, referenceText)) return null;
+
     const refNorm   = _normalizeZh(referenceText);
     const trNorm    = _normalizeZh(transcript);
     const sim       = calculateSimilarity(transcript, referenceText); // 0-100
@@ -5493,16 +5606,37 @@ body.viewing-subs .state-subs { display: block; }
     return `"${worst.word}"这个字，再听一遍，跟我说。`;
   }
 
-  // ── 文本归一化：清理标点空白，繁简差异，处理大小写 ───
-  // 标准朗读经常被原算法误判，是因为转写带空格/标点而参考文本不带，
-  // 或者只是顺序不同。归一化后再比对，标准发音稳定高分。
+  // ── 文本归一化：_normalizeZh ── 全站唯一的评分前归一化函数 ──────
+  //  电脑端 / 移动端、startFallbackRecognition / assessWithFallback、
+  //  calculateSimilarity / isUnreliableRecognition / makeMockResult /
+  //  pickBestSpeechCandidate / 逐字反馈，所有评分相关的文本比较
+  //  都必须且只能经过本函数 —— 不允许任何函数内部另写一套清洗规则。
+  //
+  //  规则：只保留汉字，删除其余一切干扰字符 ——
+  //    中文/西文标点（，。！？、""''…·等）、空格与全部空白、
+  //    阿拉伯语、英文字母、数字、emoji、拼音声调字母等。
+  //  汉字保留范围（兼顾人名用字 / 生僻字，长短句一致处理）：
+  //    优先用 Unicode 属性 \p{Script=Han}（覆盖基本区 + 扩展区 +
+  //    兼容区 + 〇）；老旧引擎不支持属性转义时回退到显式区间
+  //    （〇 U+3007、扩展A U+3400-4DBF、基本区 U+4E00-9FFF、
+  //     兼容区 U+F900-FAFF）。
+  //  ⚠️ 本函数只用于评分前的内部比较文本；页面展示文本
+  //    （课文、拼音、反馈卡）不经过它，展示不受任何影响。
+  const _HAN_STRIP_RE = (() => {
+    try { return new RegExp('[^\\p{Script=Han}]', 'gu'); }
+    catch (e) { return /[^\u3007\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g; }
+  })();
   function _normalizeZh(s) {
     if (!s) return '';
     return String(s)
-      // 去除所有非汉字字符（标点、空格、英文、ASCII数字）
-      .replace(/[^\u4e00-\u9fff]/g, '')
+      .replace(_HAN_STRIP_RE, '')
       .trim();
   }
+  // ── 相似度：calculateSimilarity ── 全站唯一的相似度函数 ─────────
+  //  所有评分相关比较（pickBestSpeechCandidate / isUnreliableRecognition /
+  //  makeMockResult）都调用本函数；referenceText 与 transcript 两端
+  //  都在函数内部先过同一个 _normalizeZh 再比较 —— 调用方传原始文本
+  //  即可，电脑端/移动端不可能各用一套处理。
   function calculateSimilarity(a, b) {
     if (!a || !b) return 0;
     const A = _normalizeZh(a), B = _normalizeZh(b);
@@ -5541,6 +5675,414 @@ body.viewing-subs .state-subs { display: block; }
       charScore * 0.50 + editScore * 0.35 + lenScore * 0.15
     ));
   }
+
+  // ── 识别可靠性判定：getUnreliableReason / isUnreliableRecognition ─
+  //  判断一条浏览器语音识别候选是否"不可靠"。
+  //  getUnreliableReason 返回不可靠的原因字符串（可靠时返回 null，
+  //  原因仅供 DEBUG 面板与排查使用）；isUnreliableRecognition 是其
+  //  布尔封装，评分流程只用布尔结果 —— 两者必然一致。
+  //  不可靠 = 识别失败，不是"学生发音差"——判定不可靠时整个评分流程必须中止：
+  //  不生成 0-30 的低分、不调用 showFeedback、不记录成绩、不推进
+  //  进度、不影响连击、不触发证书，只显示
+  //    中文：「没听清，请再试一次。」
+  //    阿语：「لم أسمع بوضوح، حاول مرة أخرى.」
+  //  让学生直接重试（由 scoreFallbackResult 返回 null →
+  //  两条 fallback 路径统一走 no-speech 错误态实现）。
+  //
+  //  ⚠️ confidence 完全不参与本判定，只在 pickBestSpeechCandidate
+  //  里做同分排序的辅助。很多移动端浏览器不稳定返回 confidence
+  //  （经常是 0 / undefined），绝不能据此判定识别失败。
+  //  可靠性只看：transcript 内容、similarity、文本长度、是否中文、
+  //  是否 final result。
+  //
+  //  candidate 需含 { transcript, similarity?, isFinal? }
+  //  （pickBestSpeechCandidate 的返回值和内部候选对象均满足）。
+  function getUnreliableReason(candidate, referenceText) {
+    if (!candidate) return '无候选对象';
+
+    const trNorm   = _normalizeZh(candidate.transcript);
+    const refNorm  = _normalizeZh(referenceText);
+    const hanCount = trNorm.length;     // 转写中的汉字数
+    const refLen   = refNorm.length;    // 目标句的汉字数
+    const sim = (typeof candidate.similarity === 'number' && isFinite(candidate.similarity))
+              ? candidate.similarity
+              : calculateSimilarity(candidate.transcript, referenceText);
+
+    // ① transcript 为空，或 ⑦ 明显不是中文：
+    //    _normalizeZh 会剔除所有非汉字字符，纯英文/数字/符号/噪音
+    //    归一化后长度为 0 → 不可靠。
+    if (hanCount === 0) {
+      return (candidate.transcript && String(candidate.transcript).trim())
+        ? '⑦ 转写不含任何汉字（非中文/噪音）'
+        : '① 转写为空';
+    }
+
+    // ② 只识别到 1 个字，且这个字不在目标句里（无关字）→ 不可靠。
+    //    （单字目标句除外：refLen < 2 时单字转写是正常情况）
+    if (hanCount === 1 && refLen >= 2 && !refNorm.includes(trNorm)) {
+      return '② 仅识别到 1 个无关字「' + trNorm + '」';
+    }
+
+    // ③⑤ similarity 很低 / 与目标句完全无关 → 不可靠。
+    //    识别器听成了一句完全不相干的话，大概率是误识别或环境噪音，
+    //    按"识别失败"重试处理，而不是给学生扣一个 0-30 的假低分。
+    if (sim < 25) {
+      return '③⑤ 相似度过低（sim=' + Math.round(sim) + ' < 25，与目标句基本无关）';
+    }
+
+    // ④ 目标句较长（≥4 字）但识别文本明显过短（不足 1/3）→
+    //    典型的录音被截断 / 只收到半句，不可靠。
+    if (refLen >= 4 && hanCount <= Math.floor(refLen / 3)) {
+      return '④ 识别文本过短（' + hanCount + '/' + refLen + ' 字，疑似截断）';
+    }
+
+    // ⑥ 移动端没有 final result、只有 interim 兜底时，要求更高的
+    //    相似度（≥60）才可信；很弱的 interim 多半是未定稿的半句话。
+    if (candidate.isFinal === false && sim < 60) {
+      return '⑥ 仅有 interim 且相似度不足（sim=' + Math.round(sim) + ' < 60）';
+    }
+
+    return null;   // 可靠
+  }
+
+  // 布尔封装：可靠性判定的唯一入口（与 getUnreliableReason 同一套规则，
+  // 仅返回值形式不同 —— 评分流程用布尔，debug 面板用原因字符串）。
+  function isUnreliableRecognition(candidate, referenceText) {
+    return getUnreliableReason(candidate, referenceText) !== null;
+  }
+
+  // ── 统一候选选择：pickBestSpeechCandidate ───────────────────────
+  //  从 SpeechRecognition / webkitSpeechRecognition 返回的全部结果中，
+  //  选择最适合评分的中文识别文本。电脑端与移动端、
+  //  startFallbackRecognition 与 assessWithFallback 两条 fallback 路径
+  //  必须且只能使用本函数，保证两端候选选择逻辑完全一致。
+  //
+  //  规则：
+  //   1. 绝不只取 e.results[0][0].transcript；
+  //   2. 遍历所有 result（移动端常把一句话切成多段）；
+  //   3. 遍历每个 result 的所有 alternatives（移动端常把正确文本
+  //      放在第 2-5 个候选位）；
+  //   4. 每个候选读取 transcript / confidence（缺失记 0）/
+  //      与参考文本的 calculateSimilarity；
+  //   5. 选取优先级：similarity 最高 → similarity 相同取 confidence
+  //      更高者；
+  //   6. final result 存在时优先在 final 候选中选；移动端只有
+  //      interim（未定稿）结果时，高相似的 interim 候选可作兜底；
+  //   7. confidence 仅作同分排序的辅助，绝不单独因 confidence 为
+  //      0 / undefined 判定识别失败（移动端浏览器经常不提供
+  //      confidence）。识别是否可用由 isReliable 综合判断：
+  //      transcript 是否含汉字、similarity、是否 final。
+  //
+  //  返回结构：
+  //  {
+  //    transcript    : string   选中的转写文本
+  //    confidence    : number   选中候选的置信度（缺失为 0）
+  //    similarity    : number   选中候选与参考文本的相似度 0-100
+  //    isFinal       : boolean  选中候选是否来自 final result
+  //    isReliable    : boolean  是否可用于真实评分（不可用 → 提示重试，
+  //                             而不是用空/残缺转写评出 ~19 的假低分）
+  //    allCandidates : Array    全部候选（按质量降序），便于调试
+  //  }
+  function pickBestSpeechCandidate(results, referenceText) {
+    const out = {
+      transcript: '', confidence: 0, similarity: 0,
+      isFinal: false, isReliable: false, allCandidates: [],
+    };
+    if (!results || !results.length) return out;
+
+    const candidates = [];
+    const addCandidate = (transcript, confidence, isFinal, resultIndex, altIndex, combined) => {
+      transcript = (transcript || '').trim();
+      // confidence 缺失 / 非法 → 记 0（仅排序辅助，不据此判失败）
+      const conf = (typeof confidence === 'number' && isFinite(confidence) && confidence > 0)
+                 ? confidence : 0;
+      candidates.push({
+        transcript,
+        confidence: conf,
+        similarity: calculateSimilarity(transcript, referenceText),
+        isFinal: !!isFinal,
+        resultIndex, altIndex,
+        combined: !!combined,
+      });
+    };
+
+    // ① 逐 result、逐 alternative 全量收集
+    //    isFinal 缺失时视为 final：interimResults=false 的配置下，
+    //    部分实现不提供 isFinal 字段，但事件里的结果都是定稿结果。
+    let segCount = 0, maxAlts = 0;
+    const segs = [];
+    for (let i = 0; i < results.length; i++) {
+      const seg = results[i];
+      if (!seg || !seg.length) continue;
+      const isFinal = (typeof seg.isFinal === 'undefined') ? true : (seg.isFinal === true);
+      segs.push({ seg, isFinal, index: i });
+      segCount++;
+      maxAlts = Math.max(maxAlts, seg.length);
+      for (let k = 0; k < seg.length; k++) {
+        const alt = seg[k];
+        if (!alt) continue;
+        addCandidate(alt.transcript, alt.confidence, isFinal, i, k, false);
+      }
+    }
+
+    // ② 多段结果：按候选位 k 把同类（final / interim）分段拼成完整候选句。
+    //    移动端常把"我喜欢喝茶"切成「我喜欢」+「喝茶」两段，
+    //    单段候选的相似度都不高，拼接后才是学生真正读的整句。
+    if (segCount > 1) {
+      const groups = [
+        segs.filter(s => s.isFinal),
+        segs.filter(s => !s.isFinal),
+      ];
+      for (const group of groups) {
+        if (group.length < 2) continue;
+        for (let k = 0; k < maxAlts; k++) {
+          let text = '', confSum = 0, confN = 0;
+          for (const { seg } of group) {
+            const alt = seg[k] || seg[0];
+            if (!alt) continue;
+            text += (alt.transcript || '');
+            if (typeof alt.confidence === 'number' && alt.confidence > 0) {
+              confSum += alt.confidence; confN++;
+            }
+          }
+          if (text.trim()) {
+            addCandidate(text, confN ? confSum / confN : 0,
+                         group[0].isFinal, -1, k, true);
+          }
+        }
+      }
+    }
+
+    // ③ 排序：similarity 降序 → confidence 降序（confidence 仅辅助）
+    const byQuality = (a, b) =>
+      (b.similarity - a.similarity) || (b.confidence - a.confidence);
+
+    // ④ final 优先：final 候选里有含汉字的转写就在 final 中选；
+    //    没有 final（移动端偶发只回 interim）时，才用 interim 兜底。
+    const usable = c => _normalizeZh(c.transcript).length > 0;
+    const finals   = candidates.filter(c => c.isFinal  && usable(c)).sort(byQuality);
+    const interims = candidates.filter(c => !c.isFinal && usable(c)).sort(byQuality);
+
+    out.allCandidates = candidates.slice().sort(
+      (a, b) => (b.isFinal - a.isFinal) || byQuality(a, b)
+    );
+
+    let chosen = null;
+    if (finals.length)        chosen = finals[0];   // final 优先
+    else if (interims.length) chosen = interims[0]; // 无 final 时 interim 兜底
+
+    if (chosen) {
+      out.transcript = chosen.transcript;
+      out.confidence = chosen.confidence;
+      out.similarity = chosen.similarity;
+      out.isFinal    = chosen.isFinal;
+      // 可靠性判定统一委托给 isUnreliableRecognition：
+      // 空转写 / 单个无关字 / 相似度过低（识别成完全无关的话）/
+      // 长句被截断 / 仅有很弱的 interim / 非中文 → 不可靠。
+      // confidence 不参与判定（移动端经常不提供）。
+      out.isReliable = !isUnreliableRecognition(chosen, referenceText);
+    }
+    return out;
+  }
+
+  // ── 把 SpeechRecognitionResultList 快照成普通数组 ───────────────
+  //  onresult 可能触发多次（interim → final），而事件里的 results
+  //  是浏览器持有的活动对象，识别会话结束后部分移动端浏览器无法再
+  //  安全读取。这里逐 result、逐 alternative 复制成普通对象，保留
+  //  isFinal 标记，供 pickBestSpeechCandidate 在 onend / onerror
+  //  阶段也能使用最后一次快照兜底。
+  function snapshotSpeechResults(resultList) {
+    const out = [];
+    if (!resultList) return out;
+    for (let i = 0; i < resultList.length; i++) {
+      const seg = resultList[i];
+      if (!seg || !seg.length) continue;
+      const copy = [];
+      for (let k = 0; k < seg.length; k++) {
+        const alt = seg[k];
+        if (!alt) continue;
+        copy.push({ transcript: alt.transcript || '', confidence: alt.confidence });
+      }
+      if (!copy.length) continue;
+      // isFinal 缺失视为 final（个别实现不提供该字段）
+      copy.isFinal = (typeof seg.isFinal === 'undefined') ? true : (seg.isFinal === true);
+      out.push(copy);
+    }
+    return out;
+  }
+
+  // ── 统一识别器工厂：createZhRecognition ─────────────────────────
+  //  startFallbackRecognition / assessWithFallback 共用本工厂，保证
+  //  两条路径、电脑端/移动端使用完全相同的识别配置：
+  //    lang            = 'zh-CN'  普通话识别
+  //    continuous      = false    单句模式
+  //    interimResults  = true     收集 interim 候选（仅作移动端兜底，
+  //                               评分永远 final 优先 —— 选取与兜底
+  //                               规则见 pickBestSpeechCandidate /
+  //                               isUnreliableRecognition）
+  //    maxAlternatives = 5        所有 alternatives 全部进入候选选择
+  //  环境不支持 / 构造失败时返回 null，由调用方决定降级方式。
+  function createZhRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    try {
+      const rec = new SR();
+      rec.lang            = 'zh-CN';
+      rec.continuous      = false;
+      rec.interimResults  = true;
+      rec.maxAlternatives = 5;
+      return rec;
+    } catch(e) { return null; }
+  }
+
+  // ── 统一 fallback 评分出口：scoreFallbackResult ─────────────────
+  //  这是全站唯一允许把"识别候选"变成"分数"的地方。
+  //  startFallbackRecognition()（无 Azure key 的主路径）和
+  //  assessWithFallback()（Azure 失败后的降级路径）都必须经过本函数，
+  //  从机制上杜绝两条路径、电脑端/移动端使用不同评分流程：
+  //    - 同一个 referenceText（由 startRecording 取自 LESSONS[currentIndex].zh，
+  //      原样透传，任何一层都不得改写）；
+  //    - 同一个候选选择规则（入参 best 必须来自 pickBestSpeechCandidate）；
+  //    - 同一个归一化逻辑（makeMockResult / calculateSimilarity 内部
+  //      统一调用 _normalizeZh）；
+  //    - 同一个相似度算法 calculateSimilarity()；
+  //    - 同一个评分公式 makeMockResult()（未做任何"移动端加分"，
+  //      分数差异的修复全部来自候选选择与失败处理，而非抬分）。
+  //  返回：
+  //    AssessmentResult —— 候选可靠，正常评分（附 similarity /
+  //                        isFinal / allCandidates 元信息，仅供展示调试，
+  //                        不参与评分公式与通关判定）；
+  //    null            —— 候选不可靠（isUnreliableRecognition 判定：
+  //                        空转写 / 单个无关字 / 相似度过低 / 长句被
+  //                        截断 / 仅有很弱的 interim / 非中文）。
+  //                        这是"识别失败"，不是"学生发音差"——调用方
+  //                        显示「没听清，请再试一次。/
+  //                        لم أسمع بوضوح، حاول مرة أخرى.」让学生重试，
+  //                        不评 0-30 假低分、不调 showFeedback、
+  //                        不记成绩、不推进度、不动连击、不发证书。
+  function scoreFallbackResult(best, referenceText) {
+    // 唯一可靠性闸门：isUnreliableRecognition。
+    // （pickBestSpeechCandidate 的 isReliable 字段也由同一函数得出，
+    //   这里再判一次是为了让任何调用方都绕不过这道闸。）
+    if (!best || isUnreliableRecognition(best, referenceText)) return null;
+    // confidence 为 0（浏览器未提供）时 makeMockResult 内部按中性 75
+    // 处理，不会因此压低分数（移动端经常不提供 confidence）。
+    const result = makeMockResult(referenceText, best.transcript, best.confidence);
+    // makeMockResult 入口也有同源闸门（双保险），可能返回 null
+    if (result === null) return null;
+    result.similarity    = best.similarity;
+    result.isFinal       = best.isFinal;
+    result.allCandidates = best.allCandidates;
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  🐞 Debug 面板 —— 仅 URL 带 ?debug=1 时存在
+  //  正式模式（DEBUG=false）：不创建任何 DOM、不注入任何样式，
+  //  debugLogAssessment 为空操作 —— 学生端 UI、移动端排版、评分
+  //  全部零影响。面板用 position:fixed 悬浮，不参与文档流，
+  //  即使在 debug 模式下也不会挤动页面布局；点击标题可折叠。
+  // ═══════════════════════════════════════════════════════════════
+  let _dbgPanelEl = null, _dbgBodyEl = null;
+  const _dbgEntries = [];
+
+  function _dbgIsMobile() {
+    try {
+      return /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i
+        .test(navigator.userAgent || '');
+    } catch(e) { return false; }
+  }
+
+  function _ensureDebugPanel() {
+    if (!DEBUG || _dbgPanelEl) return;
+    const SRok = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const wrap = document.createElement('div');
+    wrap.id = 'dbgPanel';
+    wrap.style.cssText =
+      'position:fixed;left:8px;bottom:42px;z-index:99999;' +
+      'max-width:min(92vw,440px);background:rgba(15,23,42,.93);color:#e2e8f0;' +
+      'font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;' +
+      'border:1px solid #334155;border-radius:8px;direction:ltr;text-align:left;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.45);';
+    const head = document.createElement('div');
+    head.style.cssText =
+      'padding:6px 10px;cursor:pointer;user-select:none;' +
+      'border-bottom:1px solid #334155;color:#93c5fd;font-weight:600;';
+    head.textContent =
+      '🐞 DEBUG · 设备:' + (_dbgIsMobile() ? 'mobile' : 'desktop') +
+      ' · SR:' + (SRok ? '支持' : '不支持') +
+      ' · 模式:' + ((AZURE_SPEECH_KEY && AZURE_REGION) ? 'Azure(可降级)' : 'fallback 识别估分') +
+      ' ▾';
+    const body = document.createElement('div');
+    body.style.cssText =
+      'padding:6px 10px;max-height:38vh;overflow:auto;' +
+      'white-space:pre-wrap;word-break:break-all;';
+    body.textContent = '等待第一次评分…';
+    head.onclick = () => {
+      body.style.display = (body.style.display === 'none') ? '' : 'none';
+    };
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    document.body.appendChild(wrap);
+    _dbgPanelEl = wrap;
+    _dbgBodyEl  = body;
+  }
+
+  // 评分流水记录：entry = { path, ref, best?, result?, reason?, error? }
+  //   result 为 AssessmentResult → 显示最终 score；
+  //   result 为 null            → 触发重试，显示 unreliable 原因；
+  //   error 字符串              → 识别错误（onerror / onnomatch）。
+  //  仅记录与展示，绝不回写任何评分数据。
+  function debugLogAssessment(entry) {
+    if (!DEBUG) return;
+    try {
+      _ensureDebugPanel();
+      if (!_dbgBodyEl) return;
+      _dbgEntries.unshift(Object.assign({ t: new Date() }, entry));
+      if (_dbgEntries.length > 6) _dbgEntries.pop();
+      _dbgBodyEl.innerHTML = _dbgEntries.map(_dbgRenderEntry)
+        .join('<hr style="border:0;border-top:1px dashed #334155;margin:6px 0">');
+    } catch(e) {}
+  }
+
+  function _dbgRenderEntry(en) {
+    const esc = s => escHtml(String(s == null ? '' : s));
+    const ts  = en.t.toTimeString().slice(0, 8);
+    let head;
+    if (en.error) {
+      head = '<span style="color:#fca5a5">⛔ 识别错误：' + esc(en.error) +
+             '（温和提示，不评分）</span>';
+    } else if (!en.result) {
+      head = '<span style="color:#fcd34d">🔁 unreliable recognition → 重试\n' +
+             '原因：' + esc(en.reason || '无可用候选') + '</span>';
+    } else {
+      head = '<span style="color:#86efac">✅ 最终 score = ' +
+             en.result.pronunciationScore + '</span>';
+    }
+    let s = '[' + ts + '] 路径:' + esc(en.path) + '  ' + head + '\n';
+    s += 'referenceText: ' + esc(en.ref) + '\n';
+    if (en.best) {
+      s += '选中 transcript: "' + esc(en.best.transcript) + '"' +
+           '  conf=' + (+en.best.confidence || 0).toFixed(2) +
+           '  sim=' + Math.round(en.best.similarity || 0) +
+           '  ' + (en.best.isFinal ? 'final' : 'interim') +
+           '  可靠=' + (en.best.isReliable ? '✓' : '✗') + '\n';
+      const all = en.best.allCandidates || [];
+      s += '候选 ×' + all.length + ':\n';
+      for (let i = 0; i < all.length; i++) {
+        const c = all[i];
+        s += '  ' + (i + 1) + '. "' + esc(c.transcript) + '"' +
+             ' conf=' + (+c.confidence || 0).toFixed(2) +
+             ' sim=' + Math.round(c.similarity || 0) +
+             ' ' + (c.isFinal ? 'final' : 'interim') +
+             (c.combined ? ' 拼接' : '') + '\n';
+      }
+    }
+    return s;
+  }
+
+  // 启动时（仅 DEBUG）就把面板挂出来，方便先看设备/SR 支持信息
+  if (DEBUG) { try { _ensureDebugPanel(); } catch(e) {} }
 
   // ═══════════════════════════════════════════════════════════════
   //  状态 & UI
@@ -5602,9 +6144,10 @@ body.viewing-subs .state-subs { display: block; }
         btn.classList.add('error'); icon.textContent = '❗';
         wavebar.classList.remove('active');
         const msgs = {
-          'no-speech'  : ['حاول مرة أخرى',    'لم أسمع بوضوح، حاول مرة أخرى', '没听清，请再试一次'],
+          'no-speech'  : ['حاول مرة أخرى',    'لم أسمع بوضوح، حاول مرة أخرى.', '没听清，请再试一次。'],
           'not-allowed': ['الميكروفون',         'يرجى السماح باستخدام الميكروفون ثم المحاولة من جديد',    '请允许麦克风权限后再练习'],
           'generic'    : ['حاول مرة أخرى',    'التعرّف الصوتي غير متاح الآن، حاول مرة أخرى',               '语音识别暂时不可用，请重新点击'],
+          'unsupported': ['غير مدعوم',        'هذا المتصفح لا يدعم التعرّف الصوتي، يرجى استخدام متصفح يدعم هذه الميزة.', '当前浏览器不支持语音识别，请换 Chrome 或支持语音识别的浏览器。'],
         };
         const [l, ar, zh] = msgs[errorType] || msgs['generic'];
         label.textContent = l; statusAr.textContent = ar; statusZh.textContent = zh;
@@ -5617,6 +6160,9 @@ body.viewing-subs .state-subs { display: block; }
           const help = document.getElementById('micPermHelp');
           if (help) help.hidden = false;
           _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 4000);
+        } else if (errorType === 'unsupported') {
+          // 浏览器不支持：信息较长，给足 5 秒阅读时间
+          _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 5000);
         } else {
           _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
         }
@@ -5781,6 +6327,68 @@ body.viewing-subs .state-subs { display: block; }
   //  Azure 模式  → MediaRecorder → assessPronunciation()
   //  Fallback 模式 → SpeechRecognition → makeMockResult()
   // ═══════════════════════════════════════════════════════════════
+
+  // ── 录音前的"全静音"保障：stopAllStandardAudio ─────────────────
+  //  目的：开麦前确保页面上没有任何声音在播 —— 标准音（Azure 神经
+  //  语音 / 浏览器 speechSynthesis / 云端代理 audio 元素）和反馈语音
+  //  （鼓励语、发音建议）全部停掉。移动端扬声器与麦克风距离极近，
+  //  任何残留播放都会被识别器当成学生的朗读，污染转写、拉低评分；
+  //  电脑端因外放距离远 + 回声消除好而不明显，移动端是重灾区。
+  //
+  //  实现：先调 ttsStop()（其内部已 cancel speechSynthesis、停
+  //  WebAudio source、清 proxy audio、清待播建议语音的延时器、
+  //  复位按钮），随后再逐项显式确认一次作为双保险 ——
+  //  iOS/部分安卓 WebView 上 speechSynthesis.cancel() 偶发不彻底，
+  //  二次 cancel 是已知有效的兜底手法。
+  //  本函数只做"停止 + 复位 UI"，不动 playStandard 的任何逻辑，
+  //  "听标准音"按钮功能不受影响。
+  function stopAllStandardAudio() {
+    try { ttsStop(); } catch(e) {}
+
+    // 双保险①：speechSynthesis（浏览器本地 TTS）
+    try {
+      if (window.speechSynthesis &&
+          (window.speechSynthesis.speaking || window.speechSynthesis.pending || window.speechSynthesis.paused)) {
+        window.speechSynthesis.cancel();
+      }
+    } catch(e) {}
+
+    // 双保险②：云端代理 TTS 的 <audio> 元素
+    try {
+      if (_proxyAudioEl) {
+        _proxyAudioEl.pause();
+        _proxyAudioEl.src = '';
+        _proxyAudioEl = null;
+      }
+    } catch(e) {}
+
+    // 双保险③：Azure 神经语音的 WebAudio source
+    try {
+      if (_currentSource) { _currentSource.stop(); _currentSource = null; }
+    } catch(e) {}
+
+    // 复位"听标准音"按钮：移除 playing 状态、恢复默认文案
+    try {
+      const btn = document.getElementById('listenBtn');
+      const lbl = document.getElementById('listenLabel');
+      if (btn) btn.classList.remove('playing');
+      if (lbl) lbl.textContent = 'استمع · 听';
+    } catch(e) {}
+
+    isPlaying = false;
+  }
+
+  // 当前是否还有任何音频在播 / 待播（开麦前的最终确认用）
+  function isAnyAudioActive() {
+    try {
+      return isPlaying
+        || !!(window.speechSynthesis &&
+              (window.speechSynthesis.speaking || window.speechSynthesis.pending))
+        || !!_proxyAudioEl
+        || !!_currentSource;
+    } catch(e) { return false; }
+  }
+
   function toggleRecording() {
     const micBtn = document.getElementById('micBtn');
 
@@ -5796,6 +6404,13 @@ body.viewing-subs .state-subs { display: block; }
     if (isRecording) {
       stopRecording();
     } else {
+      // ★ 录音前先把页面上所有声音停干净（反馈语音 + 任何残留播放）。
+      //   标准音播放期间本函数已被上方 isPlaying 闸门挡住（轻点无效，
+      //   播完才能录 —— 保持原有"听/说不同时"交互，电脑端流程不变），
+      //   所以这里实际停的是 showFeedback 的鼓励语/建议语音等。
+      //   移动端扬声器紧贴麦克风，这一步必须在 3-2-1 倒计时开始前做，
+      //   倒计时的 ~2 秒同时充当扬声器残音的排空时间。
+      stopAllStandardAudio();
       // 录音前 3-2-1 倒计时，给用户心理准备
       runCountdown(() => startRecording());
     }
@@ -5814,6 +6429,18 @@ body.viewing-subs .state-subs { display: block; }
     }
 
     const ref = lesson.zh;
+
+    // ── 开麦前的硬性保障（要求：录音绝不与标准音同时进行）─────────
+    //  无论从哪个入口进入录音（toggleRecording / retryCurrent /
+    //  其它直接调用），都先把页面所有声音停干净：
+    //  speechSynthesis、云端代理 audio、Azure WebAudio source、
+    //  反馈语音及其待播延时，并复位"听标准音"按钮的 playing 状态。
+    const wasAudioActive = isAnyAudioActive();
+    stopAllStandardAudio();
+    // 若此刻确实还有声音在播（直接调用绕过了 isPlaying 闸门等场景），
+    // 停止后再等 300ms 让移动端扬声器残音排空，避免被麦克风收进去。
+    // 正常路径（倒计时后进入）此条件为 false，电脑端流程零延迟、不受影响。
+    if (wasAudioActive) await pause(300);
 
     isRecording = true;
     setMicState(MIC_STATE.LISTENING);
@@ -5907,73 +6534,229 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   async function startFallbackRecognition(ref) {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { simulatePureMock(ref); return; }
-    try {
-      recognition = new SR();
-      recognition.lang = 'zh-CN'; recognition.continuous = false;
-      recognition.interimResults = false; recognition.maxAlternatives = 3;
-      recognition.onresult = async e => {
-        if (_silentCancelRecording) {
-          _silentCancelRecording = false;
-          stopRecCountdown();
-          isRecording = false;
-          setMicState(MIC_STATE.IDLE);
-          return;
-        }
-        stopRecCountdown();   // 拿到结果就停倒数
-        const t = e.results[0][0].transcript.trim();
-        const c = e.results[0][0].confidence || 0.72;
-        setMicState(MIC_STATE.ANALYZING);
-        const result = makeMockResult(ref, t, c);
-        await pause(680);
-        handleAssessmentResult(result);
-      };
-      recognition.onerror = e => {
-        if (_silentCancelRecording) {
-          stopRecCountdown();
-          isRecording = false;
-          setMicState(MIC_STATE.IDLE);
-          return;
-        }
-        stopRecCountdown();
+    // 统一配置的识别器（lang='zh-CN' / continuous=false /
+    // interimResults=true / maxAlternatives=5），与 assessWithFallback
+    // 共用 createZhRecognition 工厂，两条路径配置零差异。
+    const rec = createZhRecognition();
+    if (!rec) { simulatePureMock(ref); return; }
+
+    // ── 本次识别会话的状态（每次调用独立） ─────────────────────
+    //  _resultHandled：保证 onresult(final) / onnomatch / onerror /
+    //                  onend / 看门狗 五个入口最多只评分一次。
+    //  _lastSnapshot ：最近一次 onresult 的候选快照（含 interim），
+    //                  移动端有时直到会话结束都不给 final result，
+    //                  此时用最后一次 interim 快照交给
+    //                  pickBestSpeechCandidate 做兜底判定 ——
+    //                  绝不因为"没有 final"就直接给低分。
+    let _resultHandled  = false;
+    let _lastSnapshot   = null;
+    let _watchdogTimer  = null;   // 一级看门狗：超时主动收束会话
+    let _watchdogGrace  = null;   // 二级看门狗：极端挂起时强制恢复按钮
+
+    const clearWatchdog = () => {
+      if (_watchdogTimer) { clearTimeout(_watchdogTimer); _watchdogTimer = null; }
+      if (_watchdogGrace) { clearTimeout(_watchdogGrace); _watchdogGrace = null; }
+    };
+
+    // 页面切后台等场景的静默取消：统一清理（不评分、不报错）
+    const silentCancelCleanup = () => {
+      _silentCancelRecording = false;
+      _resultHandled = true;
+      stopRecCountdown();
+      clearWatchdog();
+      isRecording = false;
+      setMicState(MIC_STATE.IDLE);
+    };
+
+    // 统一收口：所有评分/重试判定只经过这里。
+    //  - 必须用 pickBestSpeechCandidate 选最佳候选，
+    //    绝不直接使用 e.results[0][0].transcript；
+    //  - scoreFallbackResult 返回 null（识别为空 / 明显不可靠）时：
+    //      · 显示"没听清，请再试一次。"（现有 no-speech 错误样式，
+    //        2.2 秒后自动恢复 IDLE，麦克风按钮全程可再次点击）；
+    //      · 不调用 showFeedback，因此不产生任何分数，不推进关卡、
+    //        不记录成绩（_lastScore 不变）、不影响连击与每日星星
+    //        （handleScoreGameLogic 不会执行）、不触发证书/分享。
+    const finalizeRecognition = async (snapshot) => {
+      if (_resultHandled) return;
+      _resultHandled = true;
+      stopRecCountdown();
+      clearWatchdog();
+
+      const best = pickBestSpeechCandidate(snapshot, ref);
+
+      // 统一评分出口：与 assessWithFallback 共用 scoreFallbackResult，
+      // 同一 referenceText / 同一归一化 / 同一 calculateSimilarity /
+      // 同一评分公式 —— 两条路径、两端不可能再算出不同的分。
+      const result = scoreFallbackResult(best, ref);
+
+      if (DEBUG) {
+        console.log('[fallback] best candidate:', best);
+        debugLogAssessment({
+          path: 'fallback(主路径)', ref, best, result,
+          reason: result === null ? getUnreliableReason(best, ref) : null,
+        });
+      }
+
+      if (result === null) {
         isRecording = false;
+        setMicState(MIC_STATE.ERROR, 'no-speech');   // "没听清，请再试一次。"
+        return;
+      }
+
+      setMicState(MIC_STATE.ANALYZING);
+      await pause(680);
+      handleAssessmentResult(result);
+    };
+
+    try {
+      recognition = rec;
+
+      recognition.onresult = e => {
+        if (_silentCancelRecording) { silentCancelCleanup(); return; }
+        // ★ 移动端修复核心：
+        //   原代码只取 e.results[0][0]（第一段的第一个候选）。
+        //   电脑端 Chrome 通常第一候选就是最准的，所以电脑端正常；
+        //   移动端常把结果分段、把正确文本放在后面的候选位、
+        //   或只给 interim —— 只取 [0][0] 会拿到残缺/次优转写
+        //   → 相似度≈0 → 评出 19 分上下。
+        //   现在每次 onresult 都把全部 final + interim 候选快照下来
+        //   （所有 result × 所有 alternatives），出现 final 立即定稿
+        //   （final 优先用于评分）；只有 interim 则等 final 或 onend
+        //   再统一处理（interim 仅作移动端兜底）。
+        _lastSnapshot = snapshotSpeechResults(e.results);
+        const hasFinal = _lastSnapshot.some(s => s.isFinal);
+        if (hasFinal) finalizeRecognition(_lastSnapshot);
+      };
+
+      // onnomatch：识别器"听到了但没有把握给出结果"。
+      // 温和提示"没听清，请再试一次。"，绝不评低分；
+      // 若此前已有候选快照，先用快照走统一判定，救回这次朗读。
+      recognition.onnomatch = () => {
+        if (_silentCancelRecording) { silentCancelCleanup(); return; }
+        if (!_resultHandled && _lastSnapshot && _lastSnapshot.length) {
+          finalizeRecognition(_lastSnapshot);
+          return;
+        }
+        _resultHandled = true;
+        stopRecCountdown();
+        clearWatchdog();
+        isRecording = false;
+        if (DEBUG) debugLogAssessment({ path: 'fallback(主路径)', ref,
+          error: 'onnomatch（识别器无把握给出结果，且无候选快照）' });
+        setMicState(MIC_STATE.ERROR, 'no-speech');
+      };
+
+      recognition.onerror = e => {
+        if (_silentCancelRecording) { silentCancelCleanup(); return; }
+        stopRecCountdown();
+        // 出错前若已拿到候选快照（例如移动端给完 interim 后报错），
+        // 优先用快照走统一判定，而不是直接丢弃学生的这次朗读。
+        if (!_resultHandled && _lastSnapshot && _lastSnapshot.length) {
+          finalizeRecognition(_lastSnapshot);
+          return;
+        }
+        _resultHandled = true;
+        clearWatchdog();
+        isRecording = false;
+        if (DEBUG) debugLogAssessment({ path: 'fallback(主路径)', ref,
+          error: 'onerror: ' + (e && e.error ? e.error : 'unknown') + '（无候选快照）' });
+        // 全部走温和提示，没有任何分支会生成分数：
         if      (e.error === 'no-speech')   setMicState(MIC_STATE.ERROR, 'no-speech');
         else if (e.error === 'not-allowed') setMicState(MIC_STATE.ERROR, 'not-allowed');
-        else simulatePureMock(ref);
+        // iPhone Safari / iOS WebView 特有：API 存在但服务被禁
+        // （Siri 听写关闭、受限模式、企业策略等）→ 'service-not-allowed'；
+        // 或不支持 zh-CN → 'language-not-supported'。重试无意义，
+        // 如实提示"当前浏览器不支持语音识别"，引导换浏览器，
+        // 绝不用假分数代替（这是浏览器限制，不是学生的问题）。
+        else if (e.error === 'service-not-allowed' || e.error === 'language-not-supported')
+          setMicState(MIC_STATE.ERROR, 'unsupported');
+        // 麦克风硬件/采集不可用 → 走权限指引（含开麦帮助面板）
+        else if (e.error === 'audio-capture')
+          setMicState(MIC_STATE.ERROR, 'not-allowed');
+        // 其它瞬时识别错误："语音识别暂时不可用，请重新点击"，
+        // 2.2 秒后自动恢复，按钮可立即重试。
+        else setMicState(MIC_STATE.ERROR, 'generic');
       };
+
       recognition.onend = () => {
-        if (_silentCancelRecording) {
-          _silentCancelRecording = false;
-          stopRecCountdown();
-          isRecording = false;
-          setMicState(MIC_STATE.IDLE);
+        if (_silentCancelRecording) { silentCancelCleanup(); return; }
+        stopRecCountdown();
+        clearWatchdog();
+        // 移动端兜底：会话结束但始终没有 final result。
+        // 用最后一次 interim 快照交给统一判定 —— 高相似 interim 可评分，
+        // 低相似/空则提示"没听清"，绝不因为没有 final 就给低分。
+        if (!_resultHandled && _lastSnapshot && _lastSnapshot.length) {
+          finalizeRecognition(_lastSnapshot);
           return;
         }
-        stopRecCountdown();
+        if (!_resultHandled) _resultHandled = true;
         isRecording = false;
         const btn = document.getElementById('micBtn');
-        if (!btn.classList.contains('analyzing') && !btn.classList.contains('error'))
+        // onend 后必须恢复按钮状态：不在分析/错误态 → 回 IDLE，
+        // 按钮恢复"现在说"，绝不卡在"正在听"。
+        // （分析态由 finalizeRecognition 接管并必然走到
+        //   handleAssessmentResult → IDLE；错误态 2.2-5 秒自动复位。）
+        if (btn && !btn.classList.contains('analyzing') && !btn.classList.contains('error'))
           setMicState(MIC_STATE.IDLE);
       };
+
       recognition.start();
+      const timeoutMs = calcRecordTimeoutMs();
       // fallback 路径也显示倒数（仅展示，SR 自己控制停止）
-      startRecCountdown(calcRecordTimeoutMs());
+      startRecCountdown(timeoutMs);
+      // ── 防卡死看门狗 ─────────────────────────────────────────
+      // 一级：超时后主动 stop()，触发正常的 onresult/onend 兜底链；
+      // 二级：stop() 后 1.5 秒事件仍未到（极端挂起）→ 有快照走统一
+      //       判定，无快照强制恢复按钮到 IDLE。
+      // 看门狗在任何正常结束路径（定稿/出错/onend/静默取消）都会被
+      // 清除，不会干扰下一次录音会话。
+      _watchdogTimer = setTimeout(() => {
+        try { recognition && recognition.stop(); } catch(err) {}
+        _watchdogGrace = setTimeout(() => {
+          if (_resultHandled) return;
+          if (_lastSnapshot && _lastSnapshot.length) {
+            finalizeRecognition(_lastSnapshot);
+            return;
+          }
+          _resultHandled = true;
+          stopRecCountdown();
+          isRecording = false;
+          const btn = document.getElementById('micBtn');
+          if (btn && !btn.classList.contains('analyzing') && !btn.classList.contains('error'))
+            setMicState(MIC_STATE.IDLE);
+        }, 1500);
+      }, timeoutMs);
     } catch(e) {
       // start() 同步抛错（少数浏览器在权限被拒/非安全上下文时如此）。
-      // 若是权限/安全类错误，给温和的"请允许麦克风"提示，不要用演示评分掩盖真实权限问题；
-      // 其它同步异常（如重复 start）才退回演示评分，保证不卡死。
+      // 若是权限/安全类错误，给温和的"请允许麦克风"提示；
+      // 其它同步异常（如重复 start）提示重试 —— 两种情况都不评分。
       stopRecCountdown();
+      clearWatchdog();
       isRecording = false;
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
         setMicState(MIC_STATE.ERROR, 'not-allowed');
       } else {
-        simulatePureMock(ref);
+        setMicState(MIC_STATE.ERROR, 'generic');
       }
     }
   }
 
   function simulatePureMock(ref) {
+    // 该分支 = 既没有 Azure key，浏览器也没有 SpeechRecognition
+    // （常见于安卓 App 内置浏览器、移动端 Firefox、部分旧版 WebView）。
+    // ★ 移动端"读得很标准也只有 19 分"的另一个主因：
+    //   原实现用空转写调用 makeMockResult('', 0.65~0.85)，
+    //   评分公式 = 相似度(0)×80% + 置信度×20% ≈ 17~19 分，
+    //   且演示角标在正式环境被隐藏（仅 DEBUG 可见），
+    //   学生看到的就是一个"真实"的 19 分，且无论读得多好都不变。
+    // 修复：正式环境不再伪造分数，明确提示当前浏览器不支持语音评测，
+    //   引导换 Chrome / Safari 打开；DEBUG（?debug=1）保留原演示流程。
+    if (!DEBUG) {
+      isRecording = false;
+      setMicState(MIC_STATE.ERROR, 'unsupported');
+      return;
+    }
     setTimeout(() => {
       if (_silentCancelRecording) {
         _silentCancelRecording = false;
@@ -5989,9 +6772,16 @@ body.viewing-subs .state-subs { display: block; }
           setMicState(MIC_STATE.IDLE);
           return;
         }
-        // 纯 mock 模式（无 Azure key 且浏览器无 SpeechRecognition）
-        //   学生没出声也会拿到分数，必须明确告知"这是演示评分"
-        const result = makeMockResult(ref, '', 0.65 + Math.random() * 0.2);
+        // 纯 mock 模式（仅 DEBUG 可达）：演示完整评分流程。
+        // makeMockResult 现在对空/不可靠转写一律返回 null（防 19 分假分），
+        // 所以演示改用参考文本本身做模拟转写 —— 结果带 demoMode 标记，
+        // 不计入成绩/连击/进度/证书，仅用于开发时走通 UI 流程。
+        const result = makeMockResult(ref, ref, 0.65 + Math.random() * 0.2);
+        if (result === null) {   // 理论上不会发生，兜底防卡死
+          isRecording = false;
+          setMicState(MIC_STATE.ERROR, 'no-speech');
+          return;
+        }
         result.demoMode = true;
         handleAssessmentResult(result);
       }, 900);
@@ -6058,6 +6848,9 @@ body.viewing-subs .state-subs { display: block; }
     setMicState(MIC_STATE.IDLE);
     if (result === null)      { setMicState(MIC_STATE.ERROR, 'no-speech');   return; }
     if (result === undefined) { setMicState(MIC_STATE.ERROR, 'not-allowed'); return; }
+    // 识别失败 / 浏览器不支持时返回错误标记字符串（'generic' / 'unsupported'），
+    // 显示对应错误提示并允许重试 —— 不再用空转写伪造 ~19 的极低分。
+    if (typeof result === 'string') { setMicState(MIC_STATE.ERROR, result);  return; }
     showFeedback(result.pronunciationScore, result.transcript, result);
   }
 
@@ -6074,10 +6867,15 @@ body.viewing-subs .state-subs { display: block; }
   };
 
   // 评分模式说明（用于 feedback 卡片中的 assessmentModeNote）
-  //   demoMode  → 演示评分（mock 数据，不计入真实进度）
-  //   有 Azure key + region → AI 发音评测（真实 Azure 评分）
-  //   其它      → 浏览器估分（无 Azure 凭据时的本地估算）
-  // 注：本函数仅用于"显示文案"，绝不影响 score 计算 / 通关判定 / 进度。
+  //   demoMode             → 演示评分（mock 数据，不计入真实进度）
+  //   result.source==='azure' 且配置完整
+  //                        → "AI 发音评测"（本次结果确实来自 Azure
+  //                          Pronunciation Assessment，才允许这样标注）
+  //   其它（含配置了 key 但本次降级走了浏览器识别的情况）
+  //                        → "识别估分"（浏览器语音识别估分，
+  //                          不是专业发音评测，文案如实说明）
+  // 注：本函数仅用于"显示文案"，绝不影响 score 计算 / 通关判定 /
+  //     进度 / 证书 / 分享。
   function getAssessmentModeLabel(result) {
     if (result && result.demoMode) {
       return {
@@ -6086,16 +6884,19 @@ body.viewing-subs .state-subs { display: block; }
       };
     }
 
-    if (AZURE_SPEECH_KEY && AZURE_REGION) {
+    // "真正启用"以本次结果的来源为准（source === 'azure'），
+    // 而不是只看 key 是否填了 —— Azure 配置了但本次请求失败、
+    // 降级到浏览器识别时，不能冒充"AI 发音评测"。
+    if (result && result.source === 'azure' && AZURE_SPEECH_KEY && AZURE_REGION) {
       return {
-        zh: '发音评测',
-        ar: 'AI'
+        zh: 'AI 发音评测',
+        ar: 'تقييم النطق بالذكاء الاصطناعي'
       };
     }
 
     return {
-      zh: '浏览器估分',
-      ar: 'تقييم المتصفح'
+      zh: '识别估分',
+      ar: 'تقدير حسب التعرّف الصوتي'
     };
   }
 
@@ -6251,7 +7052,9 @@ body.viewing-subs .state-subs { display: block; }
     return (cp % span) - range;
   }
   function getCharQuality(charData, index, score, transcript) {
-    const recognized = transcript && transcript.includes(charData.hz);
+    // 统一归一化：与评分流程同一个 _normalizeZh，
+    // 转写里的空格/标点/外文不影响"该字是否被识别到"的判断
+    const recognized = transcript && _normalizeZh(transcript).includes(charData.hz);
     const base   = score + (recognized ? 8 : -10);
     const offset = _stableJitter(charData.hz, 6);  // 确定性，无随机
     const val    = base + offset;
