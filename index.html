@@ -512,6 +512,60 @@ body::before {
   margin-left: 4px;
 }
 
+/* ── 免费版：浏览器不支持语音识别时的提示卡 ─────────────────── */
+/*   仅在 SpeechRecognition / webkitSpeechRecognition 不存在
+     （或运行时确认不可用）时由 JS 取消 hidden 显示。            */
+.sr-unsupported-notice {
+  width: 100%;
+  margin-top: 10px;
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.sr-unsupported-notice[hidden] { display: none; }
+.sr-unsupported-msg-ar {
+  direction: rtl;
+  font-family: var(--font-ar);
+  font-size: 13px; font-weight: 600; line-height: 1.7;
+  color: #b45309;
+}
+.sr-unsupported-msg-zh {
+  font-family: var(--font-zh);
+  font-size: 12.5px; font-weight: 600; line-height: 1.7;
+  color: #b45309;
+  margin-top: 4px;
+}
+.sr-unsupported-reco {
+  margin: 10px 0 0; padding: 8px 0 0;
+  border-top: 1px dashed rgba(245,158,11,.35);
+  list-style: none;
+  font-family: var(--font-zh);
+  font-size: 12px; line-height: 1.9;
+  color: var(--slate);
+  text-align: center;
+}
+.sr-unsupported-reco li { margin: 0; }
+.sr-unsupported-reco .ok  { color: #15803d; font-weight: 600; }
+.sr-unsupported-reco .bad { color: #b91c1c; font-weight: 600; }
+.sr-unsupported-reco .ar-inline {
+  font-family: var(--font-ar);
+  unicode-bidi: isolate;
+}
+
+/* 不支持时禁用麦克风评分按钮：变灰、不可点、无悬浮动效 */
+.mic-btn.sr-unsupported,
+.mic-btn:disabled {
+  background: #cbd5e1 !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+}
+.mic-btn.sr-unsupported::before,
+.mic-btn.sr-unsupported::after { display: none; }
+
 /* ── Mic section ────────────────────────────────────────────── */
 .mic-section {
   display: flex; flex-direction: column; align-items: center;
@@ -3057,6 +3111,18 @@ body.viewing-subs .state-subs { display: block; }
             </ol>
           </div>
         </div>
+        <!-- 免费版提示：浏览器不支持 SpeechRecognition 时显示（启动检测 / 运行时确认），默认隐藏 -->
+        <div class="sr-unsupported-notice" id="srUnsupportedNotice" hidden>
+          <div class="sr-unsupported-msg-ar" dir="rtl">هذا المتصفح لا يدعم التعرّف الصوتي. يرجى استخدام Chrome، أو Safari على iPhone / iPad.</div>
+          <div class="sr-unsupported-msg-zh">当前浏览器不支持语音识别。请使用 Chrome 浏览器，或在 iPhone / iPad 上优先使用 Safari。</div>
+          <ul class="sr-unsupported-reco" dir="ltr">
+            <li>💻 电脑端 <span class="ar-inline">· الكمبيوتر</span>：<span class="ok">Chrome ✅</span></li>
+            <li>🤖 安卓手机 <span class="ar-inline">· أندرويد</span>：<span class="ok">Chrome ✅</span></li>
+            <li>🍎 iPhone / iPad：<span class="ok">Safari 优先 ✅</span></li>
+            <li>🦊 Firefox：<span class="bad">不推荐 ❌</span></li>
+            <li>💬 微信 / 学校内置浏览器 <span class="ar-inline">· المتصفحات المدمجة</span>：<span class="bad">不推荐 ❌</span></li>
+          </ul>
+        </div>
       </div>
 
       <!-- Feedback -->
@@ -3311,6 +3377,22 @@ body.viewing-subs .state-subs { display: block; }
     try { return new URLSearchParams(location.search).get('debug') === '1'; }
     catch (e) { return false; }
   })();
+
+  // ═══════════════════════════════════════════════════════════════
+  //  免费浏览器语音识别版 · 启动时能力检测
+  //  本版本不接入 Azure / Google Cloud 等付费云端语音评测，也没有
+  //  任何后端 API —— 麦克风练习完全依赖浏览器内置的
+  //  SpeechRecognition / webkitSpeechRecognition。
+  //  SR_SUPPORTED = 页面启动时一次性检测 API 是否存在：
+  //    true  → 正常显示麦克风练习功能；
+  //    false → 禁用麦克风评分按钮 + 显示"换浏览器"提示
+  //            （applySrUnsupportedUI），绝不开始评分、不生成假分数、
+  //            不推进进度。
+  //  注意：API 存在 ≠ 一定可用（如 iOS 关闭了 Siri 听写时会在运行时
+  //  报 service-not-allowed），运行时不可用由识别 onerror 分支如实
+  //  提示"不支持"，同样不评分。
+  // ═══════════════════════════════════════════════════════════════
+  const SR_SUPPORTED = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   // ═══════════════════════════════════════════════════════════════
   //  新功能配置 · NEW FEATURE FLAGS
@@ -6100,7 +6182,59 @@ body.viewing-subs .state-subs { display: block; }
   //   解决：每次进入 setMicState 时先清掉上一次排队的恢复定时器。
   let _micErrorResetTimer = null;
 
+  // ── 免费版：浏览器不支持语音识别时的固定 UI ──────────────────
+  //  禁用麦克风评分按钮（disabled + 灰色样式），状态区显示明确的
+  //  双语提示，并展开推荐浏览器面板。
+  //  本函数是"持久态"：setMicState 顶部有闸门，任何后续状态切换
+  //  （换句、重试、loadLesson 复位等）都会重新落回这里，
+  //  绝不会把按钮恢复成可点的"现在说"。
+  //  不评分、不推进进度、不触碰闯关/证书/分享逻辑。
+  function applySrUnsupportedUI() {
+    const btn      = document.getElementById('micBtn');
+    const icon     = document.getElementById('micBtnIcon');
+    const label    = document.getElementById('micBtnLabel');
+    const statusAr = document.getElementById('micStatusAr');
+    const statusZh = document.getElementById('micStatusZh');
+    const wavebar  = document.getElementById('soundwaveBar');
+    const notice   = document.getElementById('srUnsupportedNotice');
+    if (_micErrorResetTimer) { clearTimeout(_micErrorResetTimer); _micErrorResetTimer = null; }
+    if (btn) {
+      btn.classList.remove('recording', 'analyzing', 'error');
+      btn.classList.add('sr-unsupported');
+      btn.disabled = true;
+      btn.setAttribute('aria-disabled', 'true');
+    }
+    if (icon)  icon.textContent = '🚫';
+    if (label) label.textContent = 'غير مدعوم · 不支持';
+    if (statusAr) {
+      statusAr.textContent = 'هذا المتصفح لا يدعم التعرّف الصوتي.';
+      statusAr.style.color = '#b45309';
+    }
+    if (statusZh) {
+      statusZh.textContent = '当前浏览器不支持语音识别';
+      statusZh.style.color = '#b45309';
+    }
+    if (wavebar) wavebar.classList.remove('active');
+    if (notice)  notice.hidden = false;
+    // 桌面端右列引导占位原文是"点击麦克风，跟读句子"，
+    // 不支持时同步改成如实提示，避免引导用户去点一个被禁用的按钮。
+    try {
+      const ph = document.getElementById('dtPlaceholder');
+      if (ph) {
+        ph.innerHTML = '🚫&nbsp; هذا المتصفح لا يدعم التعرّف الصوتي'
+          + '<br><span style="font-size:11px; opacity:.8; font-family:\'Noto Sans SC\',sans-serif; direction:ltr;">'
+          + '当前浏览器不支持语音识别，请使用 Chrome，或在 iPhone / iPad 上优先使用 Safari'
+          + '</span>';
+      }
+    } catch (e) {}
+  }
+
   function setMicState(state, errorType) {
+    // ── 免费版闸门：启动检测到不支持 SpeechRecognition ──────────
+    //  任何状态切换一律落回"不支持"固定 UI，麦克风评分入口永久禁用。
+    //  （?debug=1 时放行：保留原有 DEBUG 演示流程，演示结果带
+    //  demoMode 标记，不计入进度/连击/证书，正式环境不可达。）
+    if (!SR_SUPPORTED && !DEBUG) { applySrUnsupportedUI(); return; }
     const btn      = document.getElementById('micBtn');
     const icon     = document.getElementById('micBtnIcon');
     const label    = document.getElementById('micBtnLabel');
@@ -6147,7 +6281,7 @@ body.viewing-subs .state-subs { display: block; }
           'no-speech'  : ['حاول مرة أخرى',    'لم أسمع بوضوح، حاول مرة أخرى.', '没听清，请再试一次。'],
           'not-allowed': ['الميكروفون',         'يرجى السماح باستخدام الميكروفون ثم المحاولة من جديد',    '请允许麦克风权限后再练习'],
           'generic'    : ['حاول مرة أخرى',    'التعرّف الصوتي غير متاح الآن، حاول مرة أخرى',               '语音识别暂时不可用，请重新点击'],
-          'unsupported': ['غير مدعوم',        'هذا المتصفح لا يدعم التعرّف الصوتي، يرجى استخدام متصفح يدعم هذه الميزة.', '当前浏览器不支持语音识别，请换 Chrome 或支持语音识别的浏览器。'],
+          'unsupported': ['غير مدعوم',        'هذا المتصفح لا يدعم التعرّف الصوتي. يرجى استخدام Chrome، أو Safari على iPhone / iPad.', '当前浏览器不支持语音识别。请使用 Chrome 浏览器，或在 iPhone / iPad 上优先使用 Safari。'],
         };
         const [l, ar, zh] = msgs[errorType] || msgs['generic'];
         label.textContent = l; statusAr.textContent = ar; statusZh.textContent = zh;
@@ -6161,8 +6295,13 @@ body.viewing-subs .state-subs { display: block; }
           if (help) help.hidden = false;
           _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 4000);
         } else if (errorType === 'unsupported') {
-          // 浏览器不支持：信息较长，给足 5 秒阅读时间
-          _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 5000);
+          // 运行时确认不支持（API 存在但服务被禁 / 不支持 zh-CN，
+          // 典型如 iOS 关闭 Siri 听写、微信内置 WebView）：
+          // 展开推荐浏览器面板，信息较长，给足 6 秒阅读时间。
+          // 与启动检测一样：不评分、不给假分数、不推进进度。
+          const notice = document.getElementById('srUnsupportedNotice');
+          if (notice) notice.hidden = false;
+          _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 6000);
         } else {
           _micErrorResetTimer = setTimeout(() => setMicState(MIC_STATE.IDLE), 2200);
         }
@@ -6392,6 +6531,14 @@ body.viewing-subs .state-subs { display: block; }
   function toggleRecording() {
     const micBtn = document.getElementById('micBtn');
 
+    // ── 免费版闸门：浏览器不支持 SpeechRecognition ──────────────
+    //  按钮本身已被 applySrUnsupportedUI 禁用（disabled +
+    //  pointer-events:none），此处是双保险：任何代码路径直接调用
+    //  toggleRecording 也一律拦下 —— 不开始评分、不倒计时、不生成
+    //  假分数、不推进进度，只维持"换浏览器"提示。
+    //  （?debug=1 时放行，保留 DEBUG 演示流程。）
+    if (!SR_SUPPORTED && !DEBUG) { applySrUnsupportedUI(); return; }
+
     // 防重复点击三道门，顺序：播放中 → 倒计时中 → 评分中
     //   1) 朗读演示播放中：让 TTS 播完再录
     //   2) 倒计时进行中：快速二次点击不能再启动一次 3-2-1
@@ -6417,6 +6564,9 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   async function startRecording() {
+    // 免费版闸门（双保险）：不支持的浏览器绝不进入录音/评分流程
+    // （?debug=1 时放行，保留 DEBUG 演示流程，演示分不计入进度。）
+    if (!SR_SUPPORTED && !DEBUG) { isRecording = false; applySrUnsupportedUI(); return; }
     // 防重入：runCountdown 回调期间若已被其它路径启动则直接退出
     if (isRecording) return;
 
@@ -6942,16 +7092,23 @@ body.viewing-subs .state-subs { display: block; }
       demoTag.hidden = !(isDemo && DEBUG);
     }
 
-    // 评分模式轻量说明：仅 DEBUG（?debug=1）时显示当前分数来源（AI / 浏览器 / 演示）。
-    // 上线默认隐藏，避免学生看到"演示 / 浏览器估分"这类开发 / 测试感文字；
-    // getAssessmentModeLabel 与评分计算、通关判定、进度均无关，故仅影响显示。
+    // 评分模式说明（免费版要求：必须如实标注）：
+    //   - 真实结果（来自浏览器 SpeechRecognition + makeMockResult）
+    //     → 始终显示「识别估分 · تقدير حسب التعرّف الصوتي」，
+    //       绝不显示/伪装成"AI 发音评测"或云端真实评分
+    //       （getAssessmentModeLabel 只在 result.source==='azure' 且
+    //       确实配置了 Azure 时才会给出"AI 发音评测"标签 ——
+    //       免费版 Azure key 为空，该分支永远不会到达）。
+    //   - 演示结果（demoMode，仅 ?debug=1 可达）→ 仅 DEBUG 时显示
+    //     "演示"标签，正式环境本就不可能产生演示分数。
+    // 本说明仅是显示文案，与 score 计算 / 通关判定 / 进度 / 证书无关。
     const modeNote  = document.getElementById('assessmentModeNote');
     if (modeNote) {
-      if (DEBUG) {
-        const modeLabel = getAssessmentModeLabel(result);
-        modeNote.textContent = `${modeLabel.ar} · ${modeLabel.zh}`;
+      const modeLabel = getAssessmentModeLabel(result);
+      if (isDemo) {
+        modeNote.textContent = DEBUG ? `${modeLabel.ar} · ${modeLabel.zh}` : '';
       } else {
-        modeNote.textContent = '';
+        modeNote.textContent = `${modeLabel.ar} · ${modeLabel.zh}`;
       }
     }
 
@@ -8721,6 +8878,25 @@ body.viewing-subs .state-subs { display: block; }
   renderTopStats();     // 顶部状态栏
   updateComboUI();      // 显示已存在的 combo
   renderCategories();   // 渲染一级场景（首页默认视图）
+  // ── 免费版：页面启动时检测浏览器语音识别支持情况 ─────────────
+  //  不支持 SpeechRecognition / webkitSpeechRecognition →
+  //  立即禁用麦克风评分按钮、显示双语"换浏览器"提示与推荐浏览器
+  //  面板（applySrUnsupportedUI 为持久态，后续任何 setMicState
+  //  都会维持该状态）。听标准音、闯关页面、进度、证书、分享等
+  //  其余功能不受影响。
+  if (!SR_SUPPORTED) {
+    if (!DEBUG) {
+      try { applySrUnsupportedUI(); } catch (e) {}
+    } else {
+      // DEBUG（?debug=1）：仅展示提示面板，不禁用按钮，
+      // 保留原有"纯演示评分"开发流程（demoMode，不计入进度）。
+      try {
+        const notice = document.getElementById('srUnsupportedNotice');
+        if (notice) notice.hidden = false;
+      } catch (e) {}
+      console.warn('[init] SpeechRecognition 不可用（DEBUG 模式：按钮保留，演示流程可用）');
+    }
+  }
   // 不立即调用 showSentence —— 用户先选场景、再选分支，最后进入句子页
   // voices 由顶部 _loadVoices() + onvoiceschanged 自动处理
 
