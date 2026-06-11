@@ -5014,25 +5014,42 @@ body.viewing-subs .state-subs { display: block; }
   let _proxyAborted  = false;               // 用于打断代理 TTS
 
   // ── 浏览器 voice 选择：按质量打分 ──────────────────────────────
-  // 不同名字代表不同质量，给个分数让系统选最好的
+  //  ★ V4.1 标准普通话保障：
+  //   · 课文/反馈必须用标准普通话朗读。只有 zh-CN / cmn（普通话）
+  //     语音允许≥50 分（浏览器层启用线）；
+  //   · 粤语语音（zh-HK / yue / Apple Sin-ji 善怡 / 微软 Tracy 等）
+  //     用粤语读普通话课文是完全错误的发音 —— 一律打 1 分，
+  //     仅作"系统里存在中文语音"的存在性标记，正常流程永远选不中，
+  //     只在联网代理也失败的最后兜底里可能被动用（有声优于无声）；
+  //   · zh-TW（台湾国语）是普通话的腔调变体，固定 30 分（<50），
+  //     正常流程让位给 Google 代理的标准普通话，仅离线兜底使用；
+  //   · 优质语音名字加分只对 zh-CN / cmn 生效，台/粤腔不可能
+  //     靠名字加分越过 50 分启用线（修复了旧版 Sin-ji 粤语语音
+  //     被加分到 65 分、用粤语朗读课文的 bug）。
   function _scoreVoice(v) {
     if (!v || !v.lang) return -1;
-    const lang = v.lang.toLowerCase();
-    // 必须是中文
-    if (!lang.startsWith('zh')) return -1;
-    let s = 0;
-    // 普通话最优先
-    if (lang === 'zh-cn' || lang === 'zh_cn' || lang === 'cmn-cn') s += 100;
-    else if (lang.startsWith('zh-cn') || lang.startsWith('cmn'))   s += 80;
-    else if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk')) s += 30; // 台/粤腔可凑合
-    else                                                            s += 10;
-
+    const lang = String(v.lang).toLowerCase().replace(/_/g, '-');
     const name = (v.name || '').toLowerCase();
-    // 已知优质语音加分
-    if (/xiaoxiao|xiaoyi|yunxi|yunyang/.test(name)) s += 50; // Azure Neural 系列
-    if (/google/.test(name))                         s += 40; // Google 普通话（云端，音质佳）
-    if (/tingting|ting-ting|tian|sinji|meijia|yating/.test(name)) s += 30; // Apple 系列
-    if (/huihui|kangkang|yaoyao/.test(name))         s += 20; // 微软经典本地语音
+    // 必须是中文（yue-* 粤语语种代码不以 zh 开头，天然排除出正常选择）
+    if (!lang.startsWith('zh') && !lang.startsWith('cmn')) return -1;
+    // 明确的粤语语音：lang 为 zh-HK / zh-yue，或已知粤语语音名
+    // （Apple Sin-ji 善怡、微软 Tracy/Danny 走 zh-HK 分支）
+    if (lang.startsWith('zh-hk') || lang.includes('yue')
+        || /sin-?ji|cantonese|粤/.test(name)) {
+      return 1;   // 存在性标记：正常永不选用，仅最后兜底
+    }
+    let s = 0;
+    const isMandarin = lang.startsWith('zh-cn') || lang.startsWith('cmn');
+    if (isMandarin)                  s += 100;  // 标准普通话
+    else if (lang.startsWith('zh-tw')) s += 30; // 台湾国语：仅离线兜底
+    else                             s += 10;   // 其他 zh-*（未知腔）
+    // 已知优质语音加分：仅普通话生效
+    if (isMandarin) {
+      if (/xiaoxiao|xiaoyi|yunxi|yunyang/.test(name)) s += 50; // Azure Neural 系列
+      if (/google/.test(name))                         s += 40; // Google 普通话（云端，音质佳）
+      if (/tingting|ting-ting|tiantian|tian-tian/.test(name)) s += 30; // Apple 普通话（婷婷/天天）
+      if (/huihui|kangkang|yaoyao|lili/.test(name))    s += 20; // 微软经典普通话本地语音
+    }
     // 本地语音稍微加分（不需联网，稳定）
     if (v.localService) s += 5;
     return s;
@@ -5329,34 +5346,53 @@ body.viewing-subs .state-subs { display: block; }
       if (onDone) onDone();
     };
 
-    // 总策略：层层降级
-    const tryProxy = () => {
+    // 总策略：层层降级（普通话优先级：浏览器标准普通话语音(≥50分)
+    //  → Google 代理(tl=zh-CN，保证标准普通话) → 最后兜底：质量较低
+    //  的中文语音（可能台/粤腔，仅在联网代理也失败时启用，有声优于无声））
+    const failAll = (err) => {
+      if (DEBUG) console.warn('[TTS][proxy] failed:', err && err.message ? err.message : err);
+      _currentEngine = TTS_ENGINE.NONE;
+      updateEngineBadge();
+      if (opts && opts.showErrorToast) {
+        showTtsErrorToast();
+      }
+      if (onDone) onDone();
+    };
+
+    const tryProxy = (allowBrowserLastResort) => {
       _speakWithProxy(text, proxyRate)
         .then(() => finish(TTS_ENGINE.PROXY))
         .catch(err => {
-          if (DEBUG) console.warn('[TTS][proxy] failed:', err && err.message ? err.message : err);
-          _currentEngine = TTS_ENGINE.NONE;
-          updateEngineBadge();
-          if (opts && opts.showErrorToast) {
-            showTtsErrorToast();
+          // ★ V4.1 最后兜底：标准普通话代理失败（典型为离线），
+          //   且系统存在某个中文语音（哪怕只有台腔等低分语音）→
+          //   仍然朗读（u.lang 固定 zh-CN，让引擎尽量按普通话读），
+          //   优于完全无声。粤语等 1 分语音也只会在这一步被动启用。
+          if (allowBrowserLastResort && window.speechSynthesis && _zhVoiceScore > 0) {
+            if (DEBUG) console.warn('[TTS] 代理失败，启用低分中文语音兜底 (score=' + _zhVoiceScore + ')');
+            _speakWithBrowser(text, browserRate)
+              .then(() => finish(TTS_ENGINE.BROWSER))
+              .catch(err2 => failAll(err2));
+            return;
           }
-          if (onDone) onDone();
+          failAll(err);
         });
     };
 
     const tryBrowser = () => {
-      if (!window.speechSynthesis) { tryProxy(); return; }
+      if (!window.speechSynthesis) { tryProxy(false); return; }
       _ensureBestVoice().then(() => {
-        // 如果质量评分太低（没有中文语音或质量很差），直接跳到代理
+        // 质量评分 < 50 = 本机没有标准普通话语音（只有台/粤腔或未知腔）
+        // → 先用 Google 代理（tl=zh-CN 保证标准普通话），代理失败再
+        //   回头用本机语音兜底（allowBrowserLastResort=true）。
         if (_zhVoiceScore < 50) {
-          tryProxy();
+          tryProxy(true);
           return;
         }
         _speakWithBrowser(text, browserRate)
           .then(() => finish(TTS_ENGINE.BROWSER))
           .catch(err => {
             if (DEBUG) console.warn('[TTS][browser] failed:', err && err.message ? err.message : err);
-            tryProxy();
+            tryProxy(false);   // 浏览器层已试过，避免回环
           });
       });
     };
