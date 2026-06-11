@@ -5511,7 +5511,8 @@ body.viewing-subs .state-subs { display: block; }
       };
 
       // 统一收口：候选 → pickBestSpeechCandidate → scoreFallbackResult。
-      // 不可靠（空 / 截断 / 非中文）→ settle(null)，让学生重试。
+      // 识别失败（空 / 非中文 / 完全无关）→ settle(null)，让学生重试。
+      // 说错内容（少字/多字/换字/乱序）不在此列，正常评低/中分。
       const finalize = (snapshot) => {
         if (_handled) return;
         const best = pickBestSpeechCandidate(snapshot, referenceText);
@@ -5600,82 +5601,378 @@ body.viewing-subs .state-subs { display: block; }
   //
   //  入口闸门（与 scoreFallbackResult 同源，双保险）：
   //    transcript 为空 / 明显不可靠（单个无关字、与目标句完全无关、
-  //    长句被截断、非中文 —— 见 isUnreliableRecognition）时直接
+  //    非中文、仅弱 interim —— 见 isUnreliableRecognition）时直接
   //    返回 null（= retry 状态，handleAssessmentResult 会显示
   //    「没听清，请再试一次。」），绝不把识别失败换算成 0-30 的低分。
-  //    这正是"标准发音被手机识别错后显示 19 分"的根治点：旧公式里
-  //    空转写 = 相似度 0 + 置信度 20% 权重 ≈ 16-19 分。
   //
-  //  通过闸门后的分数走向（公式未动，没有任何"移动端加分"或抬高下限）：
-  //    similarity 高   → 分数正常偏高（≥90 保底 88，完全一致保底 92）；
-  //    similarity 中等 → 分数中等；
-  //    similarity 低但识别可靠（确实读出了相关的中文内容）→ 允许低分，
-  //    这是真实的练习反馈，不拦截。
-  function makeMockResult(referenceText, transcript, confidence) {
+  //  ★ V3.2 评分纪律（修复"说错仍可能 100 分"）：
+  //    1. ★ V3.5 满分硬规则：100 分必须同时满足八项条件 ——
+  //       ①refNorm===trNorm ②转写非空 ③识别可靠（入口闸门）
+  //       ④无漏字 ⑤无多字 ⑥无错字 ⑦无顺序错误（④-⑦ 逐项显式
+  //       检查 align 计数）⑧定稿(final)结果且非备选位候选。
+  //       refNorm !== trNorm 时，即使 confidence = 1 也绝无 100：
+  //       非一致 sim ≤ 97（_similarityFromNorm 封顶）→ 评分分支
+  //       粗钳制 ≤97 → ★V3.6 错误扣分上限统一收口（R1：不一致
+  //       最高 95；miss/相似度阶梯逐级压低；★V3.7 R9：2/3/4 字
+  //       短句有任何错/漏/多 → 封顶 60/70/80，见 wlf 之后的上限块）
+  //       → 逐字反馈终检，四重保险。
+  //       完全一致但仅 interim → 封顶 95；来自备选位 → 封顶 92。
+  //    2. 不完全一致 → 相似度封顶 97，按严格 Levenshtein 编辑距离
+  //       精准扣分：similarity = round((1 - 距离/max(目标句字数,
+  //       转写字数)) × 100)，换字/漏说/多说/顺序错全部计入距离，
+  //       短句（≤3 字）每个错误额外再扣 10（见 _similarityFromNorm）。
+  //    3. ★ V3.4 置信度权重公式：similarity 占 90%、confidence
+  //       最多占 10%，且只是轻微辅助 ——
+  //         pron = sim + 10% × (conf×100 − sim)
+  //       即 sim×0.9 + conf×100×0.1 的等价写法；confidence 缺失/为 0
+  //       （移动端常见）→ 修正量为 0，pron 严格等于 sim。
+  //       修正结果还会被钳制在 sim 所在的评分等级带内
+  //       （<60 / 60-74 / 75-89 / ≥90，与 showFeedback 四档一致）：
+  //       confidence 再高也不能把错句从一个等级抬进上一个等级，
+  //       再低也不能把学生压掉一个等级 —— 它改不了"对错"，
+  //       只能在同一档内做 ±几分的微调。
+  //    4. 评分依据若来自次选候选（识别器自己都没把它放在第一位，
+  //       opts.fromAlternative === true）→ 封顶 92，绝不给满分。
+  //    5. 旧的"sim ≥ 90 保底 88 / 完全一致保底 92 再加置信度"、
+  //       旧的 sim×80%+conf×20%（置信度能把 99 补成 100）
+  //       全部废除 —— 分数 = 对齐结果 + 同档内的轻微置信度修正。
+
+  // ── 评分等级带：与 showFeedback 的四档文案完全一致 ──────────────
+  //  （★V3.10 档位：≥95 excellent / 80-94 good / 60-79 练习中 /
+  //   <60 需要再练习。若调整 showFeedback 档位，必须同步本函数。）
+  //  返回 [本档下界, 本档上界]，用于把置信度修正钳制在同档内。
+  function _scoreTierBounds(s) {
+    if (s >= 95) return [95, 100];
+    if (s >= 80) return [80, 94];
+    if (s >= 60) return [60, 79];
+    return [0, 59];
+  }
+
+  function makeMockResult(referenceText, transcript, confidence, opts) {
+    opts = opts || {};
     // ── 可靠性闸门：只在识别结果可靠时生成分数 ──────────────────
-    if (isUnreliableRecognition({ transcript }, referenceText)) return null;
+    //    isFinal 一并传入：弱 interim（规则⑤）在本入口与
+    //    scoreFallbackResult 外层两道闸都会被拦，双保险。
+    if (isUnreliableRecognition({ transcript, isFinal: opts.isFinal }, referenceText)) return null;
 
-    const refNorm   = _normalizeZh(referenceText);
-    const trNorm    = _normalizeZh(transcript);
-    const sim       = calculateSimilarity(transcript, referenceText); // 0-100
-
-    // 置信度归一到 0-100，浏览器对中文的置信度通常偏低，这里做一次轻校准。
-    // confidence 在 [0,1]，0 表示未提供 → 给中性 75。
-    let conf100;
-    if (!confidence || confidence <= 0) {
-      conf100 = 75;
-    } else {
-      // 置信度 0.5 → 75，0.8 → 90，1.0 → 100；平滑曲线，避免标准发音被压低
-      conf100 = Math.min(100, 50 + confidence * 55);
-    }
-
-    // 综合发音分：相似度为主导（80%），置信度辅助（20%）
-    let base = sim * 0.80 + conf100 * 0.20;
-
-    // 完全一致：直接给优秀分，不再随机扰动
-    if (refNorm && trNorm && refNorm === trNorm) {
-      base = Math.max(base, 92);
-    }
-    // 高相似度（≥90%）也保底优秀
-    if (sim >= 90) base = Math.max(base, 88);
+    // ── 统一归一化（要求 1/7/9）：referenceText 与 transcript 在此
+    //    各过一次、且只过一次同一个 _normalizeZh；本函数后续的
+    //    完全一致判定 / 对齐 / 相似度 / 逐字反馈，全部只基于
+    //    refNorm 和 trNorm，不再触碰原始文本（原始 transcript
+    //    仅原样放进返回值供展示）。
+    const refNorm = _normalizeZh(referenceText);
+    const trNorm  = _normalizeZh(transcript);
+    const exact   = !!refNorm && refNorm === trNorm;        // 逐字完全一致
+    const align   = _alignZh(refNorm, trNorm);              // 对/错/漏/多 对齐
+    const sim     = _similarityFromNorm(refNorm, trNorm);   // 非一致 ≤97
 
     const cl = v => Math.min(100, Math.max(0, Math.round(v)));
-    const pron = cl(base);
 
-    // 各子项分数：基于真实匹配，不再随机
-    const accuracy = pron;
-    const fluency  = trNorm.length === 0 ? 0
-                   : cl(60 + (trNorm.length / Math.max(1, refNorm.length)) * 35);
-    const completeness = refNorm.length === 0 ? 0
-                       : cl((Math.min(trNorm.length, refNorm.length) / refNorm.length) * 100);
-    const tone = pron; // 无 Azure 时无法独立判声调，与综合分一致
+    // ═══════════ 满分硬规则（全站唯一允许 100 分的闸门）═══════════
+    //  八项条件必须同时成立，缺一不可：
+    //   ① refNorm === trNorm（exact）；
+    //   ② transcript 非空（trNorm.length > 0）；
+    //   ③ 识别结果可靠 —— 由本函数入口的 isUnreliableRecognition
+    //      闸门保证：不可靠在到达这里之前已 return null；
+    //   ④ 没有漏字（align.D === 0）；
+    //   ⑤ 没有多字（align.I === 0）；
+    //   ⑥ 没有错字（align.S === 0）；
+    //   ⑦ 没有顺序错误 —— 顺序错在逐字对齐里必然产生 S/D/I，
+    //      ④⑤⑥ 同时为 0 且 C === refLen 即保证全句按序逐字一致；
+    //   ⑧ 不是仅 interim 的弱识别结果（opts.isFinal !== false，
+    //      由 scoreFallbackResult 从 pickBestSpeechCandidate 透传），
+    //      也不是备选位候选（opts.fromAlternative 为 false）。
+    //  ④-⑦ 与 ① 在数学上互相蕴含（exact ⇔ 零错零漏零多零乱序），
+    //  仍然全部显式检查 —— 任何一项未来被改坏都会让满分自动失效，
+    //  而不是悄悄放水。
+    //  绝不存在"很接近给 100"或"包含关键词给 100"的路径：
+    //  唯一入口就是下面这个布尔值。
+    const perfectOK =
+         exact                      // ① 逐字完全一致
+      && trNorm.length > 0          // ② 转写非空
+      /* ③ 可靠性：入口闸门已保证 */
+      && align.D === 0              // ④ 没有漏字
+      && align.I === 0              // ⑤ 没有多字
+      && align.S === 0              // ⑥ 没有错字
+      && align.C === align.refLen   // ⑦ 全句按序逐字命中（无顺序错误）
+      && opts.isFinal !== false     // ⑧a 不是仅 interim 的弱结果
+      && !opts.fromAlternative;     // ⑧b 不是备选位候选
 
-    // 字级反馈：完全基于"该字是否在转写中按序出现"，不再随机
-    // 使用一次匹配指针，避免重复字被多次匹配
-    const refChars = Array.from(refNorm);
-    const tArr     = Array.from(trNorm);
-    let p = 0;
-    const wlf = refChars.map(hz => {
-      let found = false;
-      // 在剩余转写中查找该字（允许少量乱序，向前看 2 字）
-      for (let k = p; k < Math.min(tArr.length, p + 3); k++) {
-        if (tArr[k] === hz) { found = true; p = k + 1; break; }
+    let pron, capNote = null, confAdjust = 0;
+    if (perfectOK) {
+      // 说清楚、说准确、识别可靠且定稿 → 满分。
+      // 完全一致是文本比对所能确认的最好结果，置信度不再参与。
+      pron = 100;
+    } else if (exact) {
+      // 文本完全一致，但识别证据不满足满分硬规则
+      // （仅 interim 未定稿 / 来自备选位）→ 高分但绝不 100。
+      pron = 95;
+      capNote = opts.isFinal === false
+        ? '完全一致但仅有 interim（未定稿）弱识别 → 不满足满分硬规则，封顶 95'
+        : '完全一致但评分依据为次选候选 → 不满足满分硬规则';
+    } else {
+      // ── 置信度权重公式（similarity ≥90%，confidence ≤10%）──────
+      //  pron = sim + 0.10 × (conf×100 − sim)
+      //  · confidence 缺失/非法/为 0 → conf100 取 sim 本身 →
+      //    修正量 0，pron === sim（移动端经常不提供 confidence，
+      //    绝不能因此压分或抬分）；
+      //  · 修正量天然有界（|conf100−sim|×10%），且最终钳制在
+      //    sim 所在的评分等级带内 —— confidence 再高也改变不了
+      //    错句的等级，再低也压不掉一个等级。
+      const hasConf = (typeof confidence === 'number' && isFinite(confidence)
+                       && confidence > 0 && confidence <= 1);
+      const conf100 = hasConf ? confidence * 100 : sim;
+      let blended = Math.round(sim * 0.90 + conf100 * 0.10);
+
+      // 同档钳制：置信度只能在 sim 所在档内微调
+      const [tFloor, tCeil] = _scoreTierBounds(sim);
+      blended = Math.max(tFloor, Math.min(tCeil, blended));
+
+      // 粗钳制：refNorm !== trNorm → 此处先压到 ≤97；
+      // 最终统一上限（R1 不一致最高 95、miss/相似度阶梯等）
+      // 在下方"错误扣分上限"块一次性收口，confidence 无法突破。
+      pron = cl(Math.min(97, blended));
+      confAdjust = pron - sim;          // 仅供 debug 展示
+    }
+    // 次选候选封顶：识别器首选结果（学生最可能真正说的话）并不匹配，
+    // 仅靠备选位"碰上"了目标句 → 不能当成说对了的满分证据。
+    if (opts.fromAlternative && pron > 92) {
+      pron = 92;
+      capNote = '评分依据为次选候选 → 封顶 92（不给满分）';
+    }
+
+    // 各子项分数：全部直接来自对齐计数，不再有任何保底/随机
+    // （accuracy ≡ 最终 pron，在 return 处直接取 pron，
+    //   保证满分终检若修正了 pron，accuracy 同步一致）
+    const completeness = align.refLen === 0 ? 0
+                       : cl((align.C / align.refLen) * 100);          // 读全了多少
+    const fluency      = align.refLen === 0 ? 0
+                       : cl(100 - ((align.D + align.I) / align.refLen) * 60); // 漏/多越多越低
+    // tone：免费版无法独立判声调，如实与综合分一致 → return 处直接取 pron
+
+    // ═══════════ 逐字反馈（V3.8 强化版）═══════════════════════════
+    //  对 referenceText 的每一个汉字（align.ops 与 refNorm 逐字
+    //  一一对应，长度恒等于 refLen）生成一条反馈，规则：
+    //
+    //  【位置对齐，绝非全局查找】每个字的判定完全来自 _alignZh 的
+    //   Levenshtein 对齐结果（与总分用同一份对齐）——
+    //     match（该字在正确位置被识别到）        → ok   （92/100，'None'）
+    //     sub  （该字位置被识别成了别的字 = 替换）→ miss （45，'Mispronunciation'）
+    //     del  （该字被漏掉）                    → miss （20，'Omission'）
+    //   不存在任何"这个字是否在 transcript 中出现过"的 includes/
+    //   全局查找路径。
+    //
+    //  【顺序错乱 → near】sub/del 的字若确实被学生说出来了、只是
+    //   位置不对（出现在"游离字池"里：别处替换时实际听到的字 +
+    //   多读的插入字），改判 near（60，'OrderError'）——读了但
+    //   顺序错。near 仍计入 missCount（60 < 80），照常触发 R2/R3
+    //   上限并阻断满分，只是反馈卡显示黄色而非红色，更符合实情。
+    //
+    //  【重复字按序、一对一】游离字池是频次表，每命中一次扣减一次：
+    //   一个识别字绝不可能给多个目标字"作证"；对齐本身（DP）也保证
+    //   每个转写字至多匹配一个目标字。
+    //
+    //  【多读的字影响总分】插入字不在逐字反馈里（反馈逐目标字生成），
+    //   但全部计入编辑距离 → 压低 similarity → 触发 R1/R4-R9 上限，
+    //   并通过 insertedChars 在反馈卡上点名「多读了…」。
+    //
+    //  【与总分必然一致】逐字反馈与 similarity 来自同一份 align；
+    //   上限阶梯的 missCount 直接数本反馈的红/黄字；满分终检保证
+    //   "存在 miss/near 却 100 分"在结构上不可能发生。
+    //
+    //  例：目标「我坐公共汽车去学校」识别成「我坐汽车去学校」——
+    //      「公」「共」为 del 且未在别处说出 → miss（红），绝不全 ok。
+    //
+    //  游离字池：被说出但未在正确位置匹配上的字
+    const _strayPool = Object.create(null);
+    for (const op of align.ops) {
+      if (op.type === 'sub' && op.heard) {
+        _strayPool[op.heard] = (_strayPool[op.heard] || 0) + 1;
       }
-      // 兜底：在整段转写中查找
-      if (!found && tArr.includes(hz)) found = true;
-      // 字级分数：识别到 → 跟综合分接近；未识别到 → 显著低分
-      const s = found ? cl(pron + 2) : cl(Math.max(35, pron - 35));
-      return {
-        word: hz, accuracyScore: s,
-        errorType: s >= 80 ? 'None' : s >= 55 ? 'Mispronunciation' : 'Missing',
-      };
+    }
+    for (const ch of align.ins) {
+      _strayPool[ch] = (_strayPool[ch] || 0) + 1;
+    }
+
+    const wlf = align.ops.map(op => {
+      if (op.type === 'match') {
+        // 该字在正确位置被识别到 → ok
+        return { word: op.ref, accuracyScore: exact ? 100 : 92,
+                 errorType: 'None', heard: null };
+      }
+      // 该字未在正确位置出现（被替换 / 漏掉）：
+      // 先查游离字池 —— 它若在别处被说出，则属于顺序错乱 → near
+      if (_strayPool[op.ref] > 0) {
+        _strayPool[op.ref]--;            // 一个识别字只作证一次
+        return { word: op.ref, accuracyScore: 60,
+                 errorType: 'OrderError', heard: op.heard || null };
+      }
+      if (op.type === 'sub') {
+        // 被替换成别的字 → miss
+        return { word: op.ref, accuracyScore: 45,
+                 errorType: 'Mispronunciation', heard: op.heard || null };
+      }
+      // 漏掉 → miss
+      return { word: op.ref, accuracyScore: 20,
+               errorType: 'Omission', heard: null };
     });
 
-    return {
-      pronunciationScore: pron, accuracyScore: accuracy, fluencyScore: fluency,
-      completenessScore: completeness, toneScore: tone,
+    // ═══════════ 错误扣分上限（V3.6，最终输出前统一应用）═══════════
+    //  八条上限规则，全部在这一个位置、对最终分数统一收口：
+    //    R1  refNorm !== trNorm（文本不一致）            → 最高 95
+    //    R2  逐字反馈 miss = 1（1 个红/黄字：错字或漏字）→ 最高 89
+    //    R3  逐字反馈 miss ≥ 2                          → 最高 75
+    //    R4  similarity < 90                            → 最高 89
+    //    R5  similarity < 75                            → 最高 79
+    //    R6  similarity < 60                            → 最高 65
+    //    R7  similarity < 40                            → 最高 50
+    //    R8  与目标句基本不相关：sim < 15 在入口闸门已直接
+    //        转为「没听清，请再试一次」（不出分）；侥幸过闸的
+    //        15 ≤ sim < 25 → 最高 35。
+    //    R9  ★V3.7 短句严格扣分（目标句 2-4 个汉字）：
+    //        短句字数少、容错空间小，只要存在任何错字/漏字/多字
+    //        （totalErrors = S + D + I ≥ 1，错 1 个及以上都算）——
+    //          2 字句 → 最高 60；3 字句 → 最高 70；4 字句 → 最高 80。
+    //        例：「你好」识别成「你」（漏 1 字）→ ≤60；
+    //            「你好」识别成「你们好」（多 1 字）→ ≤60，绝非满分；
+    //            「我很好」识别成「我好」→ ≤70；
+    //            「安娜很好」漏掉「安娜」→ ≤80（叠加 sim 阶梯更低）。
+    //        短句绝不因为"识别出一个关键词"或 confidence 高就给
+    //        高分：本上限在 confidence 微调之后统一收口，无法突破。
+    //  miss 的定义与"满分终检"完全一致：errorType ≠ 'None' 或
+    //  字级分 < 80（即反馈卡上的红/黄字 = 错字 S + 漏字 D；
+    //  多字 I 不在 wlf 里，但已通过 similarity 阶梯 R4-R8、R1 与
+    //  R9 的 totalErrors 封顶）。
+    //  多条规则同时命中时取最小上限。
+    //  ⚠️ 这是分数管道的最后一道闸（仅满分终检在其后）：
+    //  confidence 的同档微调、interim/备选封顶都发生在它之前，
+    //  任何加分路径（包括 confidence = 1）都不可能突破这些上限；
+    //  上限只会把分数往下压，绝不抬分。
+    const missCount = wlf.filter(w => w.errorType !== 'None' || w.accuracyScore < 80).length;
+    const _caps = [];
+    if (!exact)         _caps.push([95, 'R1 文本不一致 → 上限95']);
+    if (missCount === 1)_caps.push([89, 'R2 1个miss → 上限89']);
+    if (missCount >= 2) _caps.push([75, 'R3 ' + missCount + '个miss → 上限75']);
+    if (sim < 90)       _caps.push([89, 'R4 sim<90 → 上限89']);
+    if (sim < 75)       _caps.push([79, 'R5 sim<75 → 上限79']);
+    if (sim < 60)       _caps.push([65, 'R6 sim<60 → 上限65']);
+    if (sim < 40)       _caps.push([50, 'R7 sim<40 → 上限50']);
+    if (sim < 25)       _caps.push([35, 'R8 与目标句基本不相关 → 上限35']);
+    // R9 短句严格扣分：2-4 字目标句存在任意错/漏/多 → 按字数封顶
+    const _totalErrors = align.S + align.D + align.I;
+    if (align.refLen >= 2 && align.refLen <= 4 && _totalErrors >= 1) {
+      const _shortCap = { 2: 60, 3: 70, 4: 80 }[align.refLen];
+      _caps.push([_shortCap, 'R9 短句' + align.refLen + '字有' + _totalErrors
+                             + '处错/漏/多 → 上限' + _shortCap]);
+    }
+    let _capLimit = Infinity, _capRule = null;
+    let _capAppliedNote = null;   // 实际压低了分数的那条上限（供 debug，不参与评分）
+    for (const [v, note] of _caps) {
+      if (v < _capLimit) { _capLimit = v; _capRule = note; }
+    }
+    if (pron > _capLimit) {
+      pron = _capLimit;
+      _capAppliedNote = _capRule;
+      capNote = capNote ? (capNote + '；' + _capRule) : _capRule;
+    }
+
+    // ═══════ 总分 ↔ 逐字反馈 绑定终检（V3.9，return 前最后一步）═══════
+    //  总分与逐字反馈来自同一份对齐（_alignZh），本块在输出前把
+    //  两者强制绑定，使任何一边都不可能与另一边矛盾：
+    //   ① 逐字反馈存在 miss（errorType≠'None' 或字级分<80，即反馈
+    //      卡红/黄字）→ 总分绝不为 100；
+    //   ② 恰有 1 个 miss → 总分 ≤ 89（与上限阶梯 R2 同源，双保险）；
+    //   ③ 有 ≥2 个 miss → 总分 ≤ 75（与 R3 同源，双保险）；
+    //   ④ 由①②③推论：只要有 miss，总分 ≤89 < 95，showFeedback
+    //      永远不可能显示 excellent（≥95）档，更不可能出现
+    //      "完美/完全正确"文案（perfect 文案另需 exactMatch===true）；
+    //   ⑤ 总分低（<75，掉出"很好"档）却逐字全 ok —— 只可能是
+    //      "字都按序说对了但多读了很多字"（重复整句等）。为避免
+    //      反馈卡呈现"全绿却低分"的矛盾，匹配字降为 near（70，
+    //      黄色）显示，配合「多读了…」提示说明扣分原因。
+    //      这是唯一会主动改写 wlf 的规则，且只降不升；
+    //   ⑥ 逐字全 ok 但 transcript 有多读字（align.I > 0）→
+    //      非完全一致 → 总分绝不为 100（≤95，R1 同源）；
+    //   ⑦ showFeedback 的等级完全由本函数输出的最终
+    //      pronunciationScore 决定（showFeedback 内不做二次加工），
+    //      分数一致 ⇒ 等级一致；
+    //   ⑧ ①②③⑥ 在正常流程下永不触发（上限阶梯已先行收口），
+    //      保留为最后防线：一旦触发说明评分公式被改坏，强制纠正
+    //      并在 DEBUG 下 console.error 报警，绝不放出矛盾结果。
+    {
+      const _missList = wlf.filter(w => w.errorType !== 'None' || w.accuracyScore < 80);
+      const _allOk    = _missList.length === 0;
+      let _bindFix    = null;
+
+      // ②③ miss 数 ↔ 总分上限（双保险）
+      if (_missList.length === 1 && pron > 89) { pron = 89; _bindFix = '①②绑定：1个miss → 强制≤89'; }
+      if (_missList.length >= 2 && pron > 75) { pron = 75; _bindFix = '③绑定：' + _missList.length + '个miss → 强制≤75'; }
+
+      // ①⑥ 满分守门：有 miss / 有多字 / 非完全一致 → 绝不 100
+      if (pron === 100 && (!_allOk || !exact || align.I > 0)) {
+        pron = 95;   // 与 R1（不一致最高 95）保持一致
+        _bindFix = '①⑥绑定：存在miss/多字/非完全一致却被算成100 → 强制降为95';
+      }
+
+      if (_bindFix) {
+        capNote = capNote ? (capNote + '；' + _bindFix) : _bindFix;
+        if (typeof DEBUG !== 'undefined' && DEBUG) {
+          try { console.error('[总分↔逐字绑定] 终检触发（评分公式被改坏？）',
+                              _bindFix, { transcript, refNorm, trNorm, align }); } catch(e) {}
+        }
+      }
+
+      // ⑤ 低分却全绿 → 匹配字降为 near（仅显示层校正，非错误，不报警）
+      if (pron < 75 && _allOk && align.I > 0) {
+        for (const w of wlf) {
+          if (w.errorType === 'None' && w.accuracyScore >= 80) w.accuracyScore = 70;
+        }
+        capNote = (capNote ? capNote + '；' : '')
+                + '⑤绑定：字都说对但多读了' + align.I + '个字拉低总分 → 逐字降为 near 显示';
+      }
+    }
+
+    const _ret = {
+      pronunciationScore: pron, accuracyScore: pron, fluencyScore: fluency,
+      completenessScore: completeness, toneScore: pron,
       transcript, wordLevelFeedback: wlf, mainSuggestion: null, source: 'fallback',
+      // ── 以下为对齐元信息：供逐字提示与 debug 面板使用，不参与通关判定 ──
+      insertedChars: align.ins.slice(),                       // 多读的字
+      alignStats: { C: align.C, S: align.S, D: align.D, I: align.I,
+                    refLen: align.refLen },
+      exactMatch: exact,
+      simRaw: sim,            // 纯相似度（置信度修正前），供 debug 对照
+      confAdjust,             // 置信度同档微调量（pron − sim），供 debug
+      capNote,
     };
+
+    // ── DEBUG 评分依据（V3.12）────────────────────────────────────
+    //  仅 ?debug=1 时创建；纯展示数据，在全部评分/上限/绑定终检
+    //  完成之后采集，绝不回写、绝不参与任何分数计算；
+    //  正式模式（DEBUG=false）不创建本字段，零开销零影响。
+    if (typeof DEBUG !== 'undefined' && DEBUG) {
+      try {
+        const _q = v => v >= 80 ? 'ok' : v >= 55 ? 'near' : 'miss';
+        _ret.debugInfo = {
+          referenceText: String(referenceText == null ? '' : referenceText),
+          refNorm, trNorm,
+          editDistance: align.dist,
+          similarity: sim,
+          confidence: (typeof confidence === 'number' && isFinite(confidence))
+                      ? confidence : null,
+          missCount: wlf.filter(w => w.errorType !== 'None' || w.accuracyScore < 80).length,
+          extraCount: align.I,
+          finalScore: pron,
+          charStatus: wlf.map(w => w.word + ':' + _q(w.accuracyScore)),
+          perfectRuleHit: perfectOK,                       // 是否触发满分硬规则
+          capRulesHit: _caps.map(c => c[1]),               // 命中的上限规则（全部）
+          capApplied: _capAppliedNote,                     // 实际压低分数的那条（可为 null）
+          shortRuleHit: _caps.some(c => /^R9/.test(c[1])), // 是否命中短句严格规则
+          unreliable: false,                               // 走到这里=未识别失败
+        };
+      } catch(e) {}
+    }
+    return _ret;
   }
 
   function deriveMainSuggestion(words, referenceText) {
@@ -5689,21 +5986,35 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   // ── 文本归一化：_normalizeZh ── 全站唯一的评分前归一化函数 ──────
-  //  电脑端 / 移动端、startFallbackRecognition / assessWithFallback、
-  //  calculateSimilarity / isUnreliableRecognition / makeMockResult /
-  //  pickBestSpeechCandidate / 逐字反馈，所有评分相关的文本比较
-  //  都必须且只能经过本函数 —— 不允许任何函数内部另写一套清洗规则。
+  //  ★ 归一化契约（V3.2.1 统一版）——评分前比较文本的唯一规则：
   //
-  //  规则：只保留汉字，删除其余一切干扰字符 ——
-  //    中文/西文标点（，。！？、""''…·等）、空格与全部空白、
-  //    阿拉伯语、英文字母、数字、emoji、拼音声调字母等。
+  //  【规则】只保留汉字，删除其余一切字符：
+  //    ① 中文标点（，。！？、；：""''《》（）…·等）→ 删除
+  //    ② 西文标点（, . ! ? " ' - 等）→ 删除
+  //    ③ 空格与全部空白（半角/全角空格、Tab、换行）→ 删除
+  //    ④ 阿拉伯语字母 → 删除
+  //    ⑤ 英文字母（含全角ＡＢＣ）、拼音声调字母（āáǎà…）→ 删除
+  //    ⑥ 阿拉伯数字 / 全角数字 → 删除
+  //    ⑦ emoji 及其他符号 → 删除
   //  汉字保留范围（兼顾人名用字 / 生僻字，长短句一致处理）：
   //    优先用 Unicode 属性 \p{Script=Han}（覆盖基本区 + 扩展区 +
   //    兼容区 + 〇）；老旧引擎不支持属性转义时回退到显式区间
   //    （〇 U+3007、扩展A U+3400-4DBF、基本区 U+4E00-9FFF、
   //     兼容区 U+F900-FAFF）。
+  //
+  //  【对称性】referenceText 与 transcript 必须、且只会经过本函数，
+  //    两端规则逐字相同 —— 任何函数不得对其中一端做额外清洗。
+  //
+  //  【覆盖面】所有评分相关比较都经过本函数（直接或经下列入口）：
+  //    _alignZh（入口自归一化）/ _similarityFromNorm（要求已归一化入参）/
+  //    calculateSimilarity / isUnreliableRecognition / getUnreliableReason /
+  //    makeMockResult / pickBestSpeechCandidate(usable) /
+  //    renderCharFeedback 兜底着色。
+  //    不允许任何函数内部另写一套清洗规则。
+  //
   //  ⚠️ 本函数只用于评分前的内部比较文本；页面展示文本
-  //    （课文、拼音、反馈卡）不经过它，展示不受任何影响。
+  //    （课文、拼音、反馈卡、TTS 朗读分段 _splitText、makeSpoken）
+  //    不经过它，展示不受任何影响。
   const _HAN_STRIP_RE = (() => {
     try { return new RegExp('[^\\p{Script=Han}]', 'gu'); }
     catch (e) { return /[^\u3007\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g; }
@@ -5714,48 +6025,155 @@ body.viewing-subs .state-subs { display: block; }
       .replace(_HAN_STRIP_RE, '')
       .trim();
   }
-  // ── 相似度：calculateSimilarity ── 全站唯一的相似度函数 ─────────
-  //  所有评分相关比较（pickBestSpeechCandidate / isUnreliableRecognition /
-  //  makeMockResult）都调用本函数；referenceText 与 transcript 两端
-  //  都在函数内部先过同一个 _normalizeZh 再比较 —— 调用方传原始文本
-  //  即可，电脑端/移动端不可能各用一套处理。
-  function calculateSimilarity(a, b) {
-    if (!a || !b) return 0;
-    const A = _normalizeZh(a), B = _normalizeZh(b);
-    if (!A || !B) return 0;
-    if (A === B) return 100;                 // 完全一致 → 满分
 
-    // 1) 字符多重集匹配率（正确处理重复字）
-    const freq = {};
-    for (const ch of B) freq[ch] = (freq[ch] || 0) + 1;
-    let matched = 0;
-    for (const ch of A) {
-      if (freq[ch] > 0) { matched++; freq[ch]--; }
-    }
-    const charScore = (matched / B.length) * 100;
-
-    // 2) 顺序得分：基于编辑距离（Levenshtein），鼓励同序朗读
-    const aArr = Array.from(A), bArr = Array.from(B);
-    const m = aArr.length, n = bArr.length;
+  // ── 归一化自检（仅 ?debug=1 时运行，正式环境零开销） ─────────────
+  //  开发期守护"归一化契约"：中文标点/空格/阿语/英文/数字/emoji/
+  //  拼音声调字母必须全部被剔除，且 ref 端与 transcript 端对称
+  //  （同一字符串无论作为哪一端，归一化结果必然相同——同一个函数）。
+  //  任何一条断言失败都会在控制台醒目报错，提示归一化规则被改坏。
+  if (typeof DEBUG !== 'undefined' && DEBUG) {
+    try {
+      const _normCases = [
+        ['我喜欢喝茶。',              '我喜欢喝茶'],   // 中文标点
+        ['  我 喜欢\t喝茶\n',         '我喜欢喝茶'],   // 空格/空白
+        ['我喜欢喝茶 أحب الشاي',      '我喜欢喝茶'],   // 阿语
+        ['我喜欢喝茶 I like tea',     '我喜欢喝茶'],   // 英文
+        ['我喜欢喝茶123４５６',        '我喜欢喝茶'],   // 数字（含全角）
+        ['我喜欢喝茶😀🍵',            '我喜欢喝茶'],   // emoji
+        ['wǒ xǐhuān 我喜欢喝茶',      '我喜欢喝茶'],   // 拼音声调字母
+        ['"我喜欢喝茶！？"……',        '我喜欢喝茶'],   // 混合标点
+        ['',                          ''],
+      ];
+      for (const [inp, want] of _normCases) {
+        const got = _normalizeZh(inp);
+        if (got !== want) {
+          console.error('[归一化契约破坏] _normalizeZh(', JSON.stringify(inp),
+                        ') =', JSON.stringify(got), '≠ 期望', JSON.stringify(want));
+        }
+        if (_normalizeZh(got) !== got) {
+          console.error('[归一化契约破坏] _normalizeZh 不幂等:', JSON.stringify(inp));
+        }
+      }
+    } catch (e) { console.error('[归一化自检异常]', e); }
+  }
+  // ── 逐字对齐：_alignZh ── 全站唯一的对齐函数 ────────────────────
+  //  ★ 入口自归一化：两个参数无论传入原始文本还是已归一化文本，
+  //    内部都先强制过同一个 _normalizeZh（幂等，重复归一化无副作用）。
+  //    任何调用方都不可能绕过统一归一化规则，也不可能对
+  //    referenceText / transcript 两端使用不同的处理。refNorm 在前。
+  //  用 Levenshtein DP + 回溯，把转写与目标句逐字对齐，输出：
+  //    ops : 与目标句逐字一一对应的数组（长度 === refLen）——
+  //          { ref:'字', type:'match' }                  按序读对
+  //          { ref:'字', type:'sub', heard:'误识别字' }   读错/被识别成别的字
+  //          { ref:'字', type:'del' }                    漏读
+  //    ins : 多读出来的字（目标句里没有的插入字）
+  //    C/S/D/I : 对/错/漏/多 四类计数；dist = 编辑距离
+  //  calculateSimilarity 的扣分、makeMockResult 的逐字反馈
+  //  （wordLevelFeedback）、renderCharFeedback 的兜底着色，
+  //  全部基于本函数的同一份对齐结果 —— 分数与逐字颜色不可能打架。
+  function _alignZh(refText, trText) {
+    const R = Array.from(_normalizeZh(refText)), T = Array.from(_normalizeZh(trText));
+    const n = R.length, m = T.length;
     const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
     for (let i = 0; i <= m; i++) dp[i][0] = i;
     for (let j = 0; j <= n; j++) dp[0][j] = j;
     for (let i = 1; i <= m; i++) {
       for (let j = 1; j <= n; j++) {
-        dp[i][j] = aArr[i-1] === bArr[j-1]
+        dp[i][j] = T[i-1] === R[j-1]
           ? dp[i-1][j-1]
           : 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
       }
     }
-    const editScore = (1 - dp[m][n] / Math.max(m, n)) * 100;
+    // 回溯，还原每个目标字的命运（match / sub / del）与插入字（ins）
+    let i = m, j = n;
+    const ops = [], ins = [];
+    let C = 0, S = 0, D = 0, I = 0;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && T[i-1] === R[j-1] && dp[i][j] === dp[i-1][j-1]) {
+        ops.push({ ref: R[j-1], type: 'match' }); C++; i--; j--;
+      } else if (i > 0 && j > 0 && dp[i][j] === dp[i-1][j-1] + 1) {
+        ops.push({ ref: R[j-1], type: 'sub', heard: T[i-1] }); S++; i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j] === dp[i][j-1] + 1)) {
+        ops.push({ ref: R[j-1], type: 'del' }); D++; j--;
+      } else {
+        ins.push(T[i-1]); I++; i--;
+      }
+    }
+    ops.reverse(); ins.reverse();
+    return { ops, ins, C, S, D, I, refLen: n, trLen: m, dist: dp[m][n] };
+  }
 
-    // 3) 长度匹配：完整朗读不被错扣分（短缺一个字也只扣一点）
-    const lenScore = (1 - Math.abs(m - n) / Math.max(m, n)) * 100;
+  // ── 相似度核心：_similarityFromNorm ─────────────────────────────
+  //  唯一的相似度公式实现（V3.3 严格编辑距离版）。
+  //  入参必须是 _normalizeZh 之后的 refNorm / trNorm
+  //  （makeMockResult 等已持有归一化文本的调用方直接用本函数，
+  //  避免对同一文本做第二次"各自归一化"）。
+  //
+  //  算法：标准 Levenshtein 编辑距离（与逐字反馈共用同一个
+  //  DP —— _alignZh 的 dist，全站只有一份编辑距离实现，
+  //  distance = 换字S + 漏说D + 多说I，分数与逐字颜色不可能打架）。
+  //
+  //  基础公式（按字数比例精准扣分）：
+  //    similarity = Math.round((1 - distance / max(refLen, trLen)) × 100)
+  //  四类错误全部计入 distance，缺一不可：
+  //    换字（读错）  → substitution，每字 +1；
+  //    漏说          → deletion，    每字 +1；
+  //    多说          → insertion，   每字 +1（trLen 变长还会同时
+  //                    抬高分母，多说越多扣得越狠）；
+  //    顺序错        → 对齐产生成对的 substitution（如「我吃饭」
+  //                    读成「饭吃我」= 2 个换字），自动重罚。
+  //  绝不使用"是否包含某些字"（multiset/includes）或宽松 LCS ——
+  //  那会让乱序、多说的错句拿高分。
+  //
+  //  短句加严（refLen ≤ 3）：短句基数小，1 个错也不允许"看起来还行"，
+  //    每个错误额外再扣 10 分。例：3 字句错 1 字 = 67 - 10 = 57（不及格），
+  //    2 字句错 1 字 = 50 - 10 = 40，1 字句读错 = 0。
+  //
+  //  硬规则：
+  //    · 任意一方归一化后为空 → 0；
+  //    · refNorm === trNorm 完全一致 → 100，这是唯一的满分来源；
+  //    · 不完全一致 → 封顶 97（杜绝四舍五入蹭到 98-100）；
+  //    · 最终结果钳制在 0-100。
+  function _similarityFromNorm(refNorm, trNorm) {
+    if (!refNorm || !trNorm) return 0;       // 任意一方为空 → 0
+    if (refNorm === trNorm) return 100;      // 完全一致 → 唯一的满分来源
 
-    // 综合：字符匹配 50% + 顺序 35% + 长度 15%
-    return Math.max(0, Math.min(100,
-      charScore * 0.50 + editScore * 0.35 + lenScore * 0.15
-    ));
+    // 严格 Levenshtein：_alignZh 入口自归一化（幂等），dist 即编辑距离；
+    // refLen / trLen 按码点计数（Array.from），生僻字代理对不重复计数。
+    const al = _alignZh(refNorm, trNorm);
+    const distance = al.dist;                          // = S + D + I
+    const maxLen   = Math.max(al.refLen, al.trLen);
+    if (maxLen === 0) return 0;
+
+    // 基础公式
+    let sim = Math.round((1 - distance / maxLen) * 100);
+
+    // 短句加严：目标句 ≤3 字时每个错误追加扣 10 分
+    if (al.refLen <= 3 && distance > 0) sim -= distance * 10;
+
+    // 非完全一致 → 封顶 97；并钳制 0-100
+    return Math.max(0, Math.min(97, sim));
+  }
+
+  // ── 相似度：calculateSimilarity ── 全站唯一的相似度对外入口 ─────
+  //  所有评分相关比较（pickBestSpeechCandidate / isUnreliableRecognition /
+  //  makeMockResult）都经由本函数或 _similarityFromNorm；
+  //  referenceText 与 transcript 两端都在函数内部先过同一个
+  //  _normalizeZh 再比较 —— 调用方传原始文本即可，
+  //  电脑端/移动端、ref 端/转写端不可能各用一套处理。
+  //  算法与扣分规则见 _similarityFromNorm（严格 Levenshtein）。
+  //    例：5 字句换 1 字 → 80；漏 1 字 → 80；多 1 字 → 83；
+  //        顺序颠倒（如「我吃饭」读成「饭吃我」）→ 2 个换字 → 重罚。
+  //  ⚠️ 参数顺序（沿用全站历史调用约定，所有调用点一致）：
+  //    第 1 参 = transcript（识别转写），第 2 参 = referenceText（目标句）。
+  //    编辑距离与 max(len) 分母对两端对称，但"短句加严"按目标句
+  //    （ref 端）长度判定，因此顺序不可随意调换。
+  function calculateSimilarity(transcript, referenceText) {
+    if (!transcript || !referenceText) return 0;   // 任意一方为空 → 0
+    // 两端统一经同一个 _normalizeZh 得到 refNorm / trNorm（要求 1/2/9）
+    const refNorm = _normalizeZh(referenceText);
+    const trNorm  = _normalizeZh(transcript);
+    return _similarityFromNorm(refNorm, trNorm);
   }
 
   // ── 识别可靠性判定：getUnreliableReason / isUnreliableRecognition ─
@@ -5782,49 +6200,74 @@ body.viewing-subs .state-subs { display: block; }
   function getUnreliableReason(candidate, referenceText) {
     if (!candidate) return '无候选对象';
 
+    // ═══════ 两类结果的分界契约（V3.11）═══════════════════════════
+    //  本函数是"识别失败"与"说错内容"的唯一分界线：
+    //
+    //  【第一类：识别失败】（本函数返回原因字符串 → 评分中止）
+    //    仅限识别系统层面的失败：转写为空 / 明显不是中文 /
+    //    与目标句完全无关（sim<15）/ 单个无关字 / 仅有未定稿的
+    //    弱 interim。处理（由调用链保证）：不生成任何分数（更不
+    //    生成高分）、提示「没听清，请再试一次。」、不调 showFeedback
+    //    → 不推进进度、不记录成绩（handleScoreGameLogic 不执行）、
+    //    不触发证书/连击/分享。"没听清"绝不被换算成低分成绩。
+    //
+    //  【第二类：说错内容】（本函数返回 null → 正常评分）
+    //    识别到了相关的中文内容，但少字 / 多字 / 换字 / 顺序错 ——
+    //    这是学生的真实练习结果，必须生成对应的低分或中等分
+    //    （绝不可能 100，见满分硬规则），并附逐字错误反馈
+    //    （Omission / Mispronunciation / OrderError）；推进与否
+    //    按原有 PASS_SCORE 逻辑处理。说错内容绝不被当成"没听清"
+    //    挡回去 —— 因此本函数刻意没有"识别文本过短"之类的长度
+    //    闸门：9 字句只说对 3 个字 → sim≈33 ≥ 15 → 正常评低分，
+    //    6 个漏字逐一标红，而不是弹"没听清"。
+    //    （旧规则④"识别文本不足 1/3 视为截断"已删除：它把大量
+    //    漏字的真实错误误判成识别失败，违反本契约。）
+    // ══════════════════════════════════════════════════════════════
+
+    // ── 统一归一化：两端同一个 _normalizeZh，
+    //    本函数所有判定（汉字数 / 单字无关 / 相似度）
+    //    都只基于 refNorm 和 trNorm。
     const trNorm   = _normalizeZh(candidate.transcript);
     const refNorm  = _normalizeZh(referenceText);
     const hanCount = trNorm.length;     // 转写中的汉字数
     const refLen   = refNorm.length;    // 目标句的汉字数
     const sim = (typeof candidate.similarity === 'number' && isFinite(candidate.similarity))
               ? candidate.similarity
-              : calculateSimilarity(candidate.transcript, referenceText);
+              : _similarityFromNorm(refNorm, trNorm);
 
-    // ① transcript 为空，或 ⑦ 明显不是中文：
+    // ① transcript 为空，或 ② 明显不是中文：
     //    _normalizeZh 会剔除所有非汉字字符，纯英文/数字/符号/噪音
-    //    归一化后长度为 0 → 不可靠。
+    //    归一化后长度为 0 → 识别失败。
     if (hanCount === 0) {
       return (candidate.transcript && String(candidate.transcript).trim())
-        ? '⑦ 转写不含任何汉字（非中文/噪音）'
-        : '① 转写为空';
+        ? '② 转写不含任何汉字（非中文/噪音）→ 识别失败'
+        : '① 转写为空 → 识别失败';
     }
 
-    // ② 只识别到 1 个字，且这个字不在目标句里（无关字）→ 不可靠。
-    //    （单字目标句除外：refLen < 2 时单字转写是正常情况）
+    // ③ 只识别到 1 个字，且这个字不在目标句里（无关字）→ 识别失败。
+    //    （单字目标句除外：refLen < 2 时单字转写是正常情况；
+    //     识别到的单字若在目标句里，属于"漏字"的说错内容 → 正常评分）
     if (hanCount === 1 && refLen >= 2 && !refNorm.includes(trNorm)) {
-      return '② 仅识别到 1 个无关字「' + trNorm + '」';
+      return '③ 仅识别到 1 个无关字「' + trNorm + '」→ 识别失败';
     }
 
-    // ③⑤ similarity 很低 / 与目标句完全无关 → 不可靠。
+    // ④ 与目标句完全无关（sim < 15）→ 识别失败。
     //    识别器听成了一句完全不相干的话，大概率是误识别或环境噪音，
-    //    按"识别失败"重试处理，而不是给学生扣一个 0-30 的假低分。
-    if (sim < 25) {
-      return '③⑤ 相似度过低（sim=' + Math.round(sim) + ' < 25，与目标句基本无关）';
+    //    按"识别失败"重试处理，而不是给学生扣一个假低分。
+    //    sim ≥ 15 即视为"识别到了相关内容"→ 交给评分（说错内容）。
+    if (sim < 15) {
+      return '④ 相似度过低（sim=' + Math.round(sim) + ' < 15，与目标句完全无关）→ 识别失败';
     }
 
-    // ④ 目标句较长（≥4 字）但识别文本明显过短（不足 1/3）→
-    //    典型的录音被截断 / 只收到半句，不可靠。
-    if (refLen >= 4 && hanCount <= Math.floor(refLen / 3)) {
-      return '④ 识别文本过短（' + hanCount + '/' + refLen + ' 字，疑似截断）';
-    }
-
-    // ⑥ 移动端没有 final result、只有 interim 兜底时，要求更高的
-    //    相似度（≥60）才可信；很弱的 interim 多半是未定稿的半句话。
+    // ⑤ 移动端没有 final result、只有 interim 兜底时，要求更高的
+    //    相似度（≥60）才可信；很弱的 interim 多半是识别器尚未定稿
+    //    的半句快照，属于识别质量问题（识别失败），不是学生说错 ——
+    //    不能用未定稿的残句给学生评一个"漏字低分"。
     if (candidate.isFinal === false && sim < 60) {
-      return '⑥ 仅有 interim 且相似度不足（sim=' + Math.round(sim) + ' < 60）';
+      return '⑤ 仅有 interim 且相似度不足（sim=' + Math.round(sim) + ' < 60）→ 识别失败（未定稿）';
     }
 
-    return null;   // 可靠
+    return null;   // 可靠 → 第二类：正常评分（说对 → 高分；说错内容 → 低/中分 + 逐字反馈）
   }
 
   // 布尔封装：可靠性判定的唯一入口（与 getUnreliableReason 同一套规则，
@@ -5846,8 +6289,12 @@ body.viewing-subs .state-subs { display: block; }
   //      放在第 2-5 个候选位）；
   //   4. 每个候选读取 transcript / confidence（缺失记 0）/
   //      与参考文本的 calculateSimilarity；
-  //   5. 选取优先级：similarity 最高 → similarity 相同取 confidence
-  //      更高者；
+  //   5. ★ V3.2 选取优先级：识别器首选结果（altIndex 0，含多段
+  //      拼接的 alt0 整句）就是评分基准；备选位（alt1-4）只在
+  //      首选缺失、或首选与目标句相差很大（sim<65）且备选明显
+  //      更接近（领先≥20）时受限启用，并打 fromAlternative 标记
+  //      → 评分封顶 92。旧的"谁相似度高选谁"会替学生把错话改成
+  //      对话（备选位常躺着目标句原文 → 说错仍 100），已废除；
   //   6. final result 存在时优先在 final 候选中选；移动端只有
   //      interim（未定稿）结果时，高相似的 interim 候选可作兜底；
   //   7. confidence 仅作同分排序的辅助，绝不单独因 confidence 为
@@ -5869,11 +6316,19 @@ body.viewing-subs .state-subs { display: block; }
     const out = {
       transcript: '', confidence: 0, similarity: 0,
       isFinal: false, isReliable: false, allCandidates: [],
+      // ★ V3.2 新增元信息（供评分封顶与 debug 面板使用）：
+      altIndex: -1,            // 选中候选在 alternatives 中的位置（0 = 首选）
+      fromAlternative: false,  // 评分依据是否来自备选位（true → 封顶 92）
+      primaryTranscript: '',   // 识别器首选结果（真正的"最终识别文本"）
+      primarySimilarity: 0,    // 首选结果与目标句的相似度
     };
     if (!results || !results.length) return out;
 
     const candidates = [];
     const addCandidate = (transcript, confidence, isFinal, resultIndex, altIndex, combined) => {
+      // 注意：这里的 trim() 只整理"展示用"的原始转写（反馈卡显示）；
+      // 评分比较文本一律在 calculateSimilarity / _alignZh 内部经
+      // 统一的 _normalizeZh 生成，本函数不做任何自有清洗规则。
       transcript = (transcript || '').trim();
       // confidence 缺失 / 非法 → 记 0（仅排序辅助，不据此判失败）
       const conf = (typeof confidence === 'number' && isFinite(confidence) && confidence > 0)
@@ -5938,29 +6393,66 @@ body.viewing-subs .state-subs { display: block; }
     // ③ 排序：similarity 降序 → confidence 降序（confidence 仅辅助）
     const byQuality = (a, b) =>
       (b.similarity - a.similarity) || (b.confidence - a.confidence);
-
-    // ④ final 优先：final 候选里有含汉字的转写就在 final 中选；
-    //    没有 final（移动端偶发只回 interim）时，才用 interim 兜底。
     const usable = c => _normalizeZh(c.transcript).length > 0;
-    const finals   = candidates.filter(c => c.isFinal  && usable(c)).sort(byQuality);
-    const interims = candidates.filter(c => !c.isFinal && usable(c)).sort(byQuality);
+    const pickTop = list => list.slice().sort(byQuality)[0] || null;
 
     out.allCandidates = candidates.slice().sort(
       (a, b) => (b.isFinal - a.isFinal) || byQuality(a, b)
     );
 
-    let chosen = null;
-    if (finals.length)        chosen = finals[0];   // final 优先
-    else if (interims.length) chosen = interims[0]; // 无 final 时 interim 兜底
+    // ④ ★ V3.2 选取纪律（修复"说错了，备选位里恰好有目标句 → 100 分"）：
+    //    评分基准 = 主假设（primary hypothesis）= 识别器自己排在
+    //    第一位的结果（altIndex === 0，含多段拼接后的 alt0 整句）。
+    //    这才是"浏览器最终识别出的 transcript"。
+    //    备选位（alt1-4）里经常躺着语言模型猜出的常见句（往往恰好
+    //    就是目标句原文）——旧逻辑"谁相似度高选谁"等于替学生把错话
+    //    改成对话，必须废除。
+    //    final 优先；没有 final（移动端偶发只回 interim）时 interim 兜底。
+    const finalsA0   = candidates.filter(c => c.isFinal  && c.altIndex === 0 && usable(c));
+    const interimsA0 = candidates.filter(c => !c.isFinal && c.altIndex === 0 && usable(c));
+    const primary    = pickTop(finalsA0) || pickTop(interimsA0);
+
+    if (primary) {
+      out.primaryTranscript = primary.transcript;
+      out.primarySimilarity = primary.similarity;
+    }
+
+    // ⑤ 备选候选（altIndex > 0）只允许在两种情况下成为评分依据，
+    //    且一旦启用就带 fromAlternative 标记 → makeMockResult 封顶 92：
+    //    a) 主假设完全缺失（alt0 全是空/非中文）；
+    //    b) 主假设与目标句相差很大（sim < 65）而某个备选明显更接近
+    //       （领先 ≥ 20）—— 典型的同音字被识别歪、正确文本掉到
+    //       备选位的移动端场景。此时给出"基本说对但识别不确定"的
+    //       受限分数（≤92），绝不给满分。
+    const finalsAlt   = candidates.filter(c => c.isFinal  && c.altIndex > 0 && usable(c));
+    const interimsAlt = candidates.filter(c => !c.isFinal && c.altIndex > 0 && usable(c));
+    const bestAlt     = pickTop(finalsAlt) || pickTop(interimsAlt);
+
+    let chosen = null, fromAlternative = false;
+    if (primary) {
+      chosen = primary;
+      if (bestAlt
+          && primary.similarity < 65
+          && bestAlt.similarity >= primary.similarity + 20) {
+        chosen = bestAlt;
+        fromAlternative = true;
+      }
+    } else if (bestAlt) {
+      chosen = bestAlt;
+      fromAlternative = true;
+    }
 
     if (chosen) {
-      out.transcript = chosen.transcript;
-      out.confidence = chosen.confidence;
-      out.similarity = chosen.similarity;
-      out.isFinal    = chosen.isFinal;
+      out.transcript      = chosen.transcript;
+      out.confidence      = chosen.confidence;
+      out.similarity      = chosen.similarity;
+      out.isFinal         = chosen.isFinal;
+      out.altIndex        = chosen.altIndex;
+      out.fromAlternative = fromAlternative;
       // 可靠性判定统一委托给 isUnreliableRecognition：
       // 空转写 / 单个无关字 / 相似度过低（识别成完全无关的话）/
-      // 长句被截断 / 仅有很弱的 interim / 非中文 → 不可靠。
+      // 仅有很弱的 interim / 非中文 → 识别失败；
+      // 少字/多字/换字/乱序 = 说错内容 → 可靠，正常评分。
       // confidence 不参与判定（移动端经常不提供）。
       out.isReliable = !isUnreliableRecognition(chosen, referenceText);
     }
@@ -6035,8 +6527,9 @@ body.viewing-subs .state-subs { display: block; }
   //                        isFinal / allCandidates 元信息，仅供展示调试，
   //                        不参与评分公式与通关判定）；
   //    null            —— 候选不可靠（isUnreliableRecognition 判定：
-  //                        空转写 / 单个无关字 / 相似度过低 / 长句被
-  //                        截断 / 仅有很弱的 interim / 非中文）。
+  //                        空转写 / 单个无关字 / 相似度过低 /
+  //                        仅有很弱的 interim / 非中文 = 识别失败；
+  //                        少字/多字/换字/乱序属"说错内容"，不在此列）。
   //                        这是"识别失败"，不是"学生发音差"——调用方
   //                        显示「没听清，请再试一次。/
   //                        لم أسمع بوضوح، حاول مرة أخرى.」让学生重试，
@@ -6047,14 +6540,24 @@ body.viewing-subs .state-subs { display: block; }
     // （pickBestSpeechCandidate 的 isReliable 字段也由同一函数得出，
     //   这里再判一次是为了让任何调用方都绕不过这道闸。）
     if (!best || isUnreliableRecognition(best, referenceText)) return null;
-    // confidence 为 0（浏览器未提供）时 makeMockResult 内部按中性 75
-    // 处理，不会因此压低分数（移动端经常不提供 confidence）。
-    const result = makeMockResult(referenceText, best.transcript, best.confidence);
+    // confidence 缺失/为 0（浏览器未提供，移动端常见）→ 不参与评分；
+    // 只有浏览器明确给出很低置信度（<0.35）时才会小幅扣分，绝不加分。
+    // fromAlternative（评分依据来自备选位）→ makeMockResult 封顶 92。
+    // isFinal（是否定稿结果）→ 满分硬规则条件⑧：仅 interim 的弱识别
+    // 即使逐字一致也不允许 100（封顶 95）。
+    const result = makeMockResult(referenceText, best.transcript, best.confidence, {
+      fromAlternative: !!best.fromAlternative,
+      isFinal: best.isFinal !== false,   // 显式布尔：仅 interim → false
+    });
     // makeMockResult 入口也有同源闸门（双保险），可能返回 null
     if (result === null) return null;
-    result.similarity    = best.similarity;
-    result.isFinal       = best.isFinal;
-    result.allCandidates = best.allCandidates;
+    result.similarity        = best.similarity;
+    result.isFinal           = best.isFinal;
+    result.allCandidates     = best.allCandidates;
+    result.altIndex          = best.altIndex;
+    result.fromAlternative   = !!best.fromAlternative;
+    result.primaryTranscript = best.primaryTranscript || '';
+    result.primarySimilarity = best.primarySimilarity || 0;
     return result;
   }
 
@@ -6143,12 +6646,81 @@ body.viewing-subs .state-subs { display: block; }
     }
     let s = '[' + ts + '] 路径:' + esc(en.path) + '  ' + head + '\n';
     s += 'referenceText: ' + esc(en.ref) + '\n';
+
+    // ═══ V3.12 评分依据 15 项（仅 debug 面板可见，纯展示）═══════════
+    //  评分成功：读取 result.debugInfo（在评分全部完成后采集）；
+    //  识别失败：result 为 null → 显示 1-4 + 第 15 项（失败原因）。
+    const di = en.result && en.result.debugInfo;
+    if (di) {
+      s += '──评分依据──\n';
+      s += ' 1.referenceText: "' + esc(di.referenceText) + '"\n';
+      s += ' 2.refNorm: "' + esc(di.refNorm) + '"\n';
+      s += ' 3.transcript: "' + esc(en.result.transcript) + '"\n';
+      s += ' 4.trNorm: "' + esc(di.trNorm) + '"\n';
+      s += ' 5.editDistance=' + di.editDistance +
+           '  6.similarity=' + Math.round(di.similarity) +
+           '  7.confidence=' + (di.confidence == null ? '—(未提供,不参与)'
+                                : (+di.confidence).toFixed(2)) + '\n';
+      s += ' 8.missCount=' + di.missCount +
+           '  9.extraCount(多字)=' + di.extraCount +
+           '  10.finalScore=' + di.finalScore + '\n';
+      s += '11.逐字: ' + esc((di.charStatus || []).join(' ')) + '\n';
+      s += '12.满分规则: ' + (di.perfectRuleHit
+             ? '✓ 触发（八条件全满足 → 100）' : '✗ 未触发') + '\n';
+      s += '13.上限规则: ' + (di.capRulesHit && di.capRulesHit.length
+             ? esc(di.capRulesHit.join(' | '))
+               + (di.capApplied
+                   ? '\n    实际生效 → ' + esc(di.capApplied)
+                   : '（命中但自然分已更低，未压分）')
+             : '无命中') + '\n';
+      s += '14.短句严格规则(R9): ' + (di.shortRuleHit ? '✓ 命中' : '✗ 未命中') + '\n';
+      s += '15.识别失败: ✗（识别可靠，已正常评分）\n';
+    } else if (!en.result && !en.error) {
+      s += '──评分依据──\n';
+      s += ' 1.referenceText: "' + esc(en.ref) + '"\n';
+      s += ' 2.refNorm: "' + esc(_normalizeZh(en.ref)) + '"\n';
+      s += ' 3.transcript: "' + esc(en.best ? en.best.transcript : '') + '"\n';
+      s += ' 4.trNorm: "' + esc(_normalizeZh(en.best ? en.best.transcript : '')) + '"\n';
+      s += '15.识别失败: ✓ → 「没听清，请再试一次。」\n';
+      s += '    原因: ' + esc(en.reason || '无可用候选') + '\n';
+      s += '    （不出分、不记成绩、不推进度、不触发证书/连击/分享）\n';
+    }
+
     if (en.best) {
       s += '选中 transcript: "' + esc(en.best.transcript) + '"' +
            '  conf=' + (+en.best.confidence || 0).toFixed(2) +
            '  sim=' + Math.round(en.best.similarity || 0) +
            '  ' + (en.best.isFinal ? 'final' : 'interim') +
+           '  alt#' + (typeof en.best.altIndex === 'number' ? en.best.altIndex : '?') +
            '  可靠=' + (en.best.isReliable ? '✓' : '✗') + '\n';
+      // ★ V3.2：首选假设（识别器真正的"最终识别文本"）与备选封顶状态
+      if (en.best.primaryTranscript !== undefined) {
+        s += '首选假设(alt0): "' + esc(en.best.primaryTranscript || '∅') + '"' +
+             '  sim=' + Math.round(en.best.primarySimilarity || 0) +
+             (en.best.fromAlternative
+               ? '  ⚠️ 评分依据为备选位候选 → 封顶 92，不给满分' : '') + '\n';
+      }
+      // ★ V3.2：与扣分同源的逐字对齐统计（对/错/漏/多）
+      if (en.result && en.result.alignStats) {
+        const a = en.result.alignStats;
+        s += '对齐: 对' + a.C + ' · 错' + a.S + ' · 漏' + a.D + ' · 多' + a.I +
+             ' / 目标' + a.refLen + '字' +
+             '  →  sim=' + Math.round(en.result.simRaw != null
+                             ? en.result.simRaw : (en.result.similarity || 0)) +
+             (en.result.confAdjust
+               ? '  置信度同档微调 ' + (en.result.confAdjust > 0 ? '+' : '')
+                 + en.result.confAdjust + '（权重≤10%，不跨档）' : '') +
+             '  完全一致=' + (en.result.exactMatch ? '✓(允许100)' : '✗(受上限规则约束,≤95)') +
+             (en.result.capNote ? ('  ' + esc(en.result.capNote)) : '') + '\n';
+        const wlf = en.result.wordLevelFeedback || [];
+        const errs = wlf.filter(w => w.errorType !== 'None')
+          .map(w => w.word + (w.errorType === 'OrderError' ? '⇄'
+                              : w.heard ? ('→' + w.heard) : '✗'));
+        if (errs.length) s += '错/漏/乱明细: ' + esc(errs.join('  ')) + '\n';
+        if ((en.result.insertedChars || []).length) {
+          s += '多读: ' + esc(en.result.insertedChars.join('、')) + '\n';
+        }
+      }
       const all = en.best.allCandidates || [];
       s += '候选 ×' + all.length + ':\n';
       for (let i = 0; i < all.length; i++) {
@@ -6156,6 +6728,7 @@ body.viewing-subs .state-subs { display: block; }
         s += '  ' + (i + 1) + '. "' + esc(c.transcript) + '"' +
              ' conf=' + (+c.confidence || 0).toFixed(2) +
              ' sim=' + Math.round(c.similarity || 0) +
+             ' alt#' + (typeof c.altIndex === 'number' ? c.altIndex : '?') +
              ' ' + (c.isFinal ? 'final' : 'interim') +
              (c.combined ? ' 拼接' : '') + '\n';
       }
@@ -7009,11 +7582,20 @@ body.viewing-subs .state-subs { display: block; }
   // ═══════════════════════════════════════════════════════════════
   // 反馈语全部使用 HSK 1-3 级范围内的字词
   // 闯关式四档反馈文案：短、轻、像游戏过关
+  // ★ V3.10 等级文案（免费版识别估分，绝不伪装成 AI 发音评测）：
+  //   perfect   ：仅 score===100 且 result.exactMatch===true
+  //               （识别文本与目标句逐字完全一致）时可用 ——
+  //               "完全正确"只许在文本真正一致时说出口；
+  //   excellent ：95-100（非完全一致时用，不说"完美/满分/完全正确"）；
+  //   good      ：80-94；
+  //   practice  ：60-79（过关，但提示继续练习）；
+  //   tryAgain  ：<60（明确"需要再练习"）。
   const praiseLines = {
-    excellent: [ { zh: '太棒了！',   ar: 'ممتاز!' } ],         // ≥ 90
-    good:      [ { zh: '很好！',     ar: 'جيد جدًا!' } ],      // 75–89
-    pass:      [ { zh: '过关！',     ar: 'نجحت!' } ],          // 60–74
-    tryAgain:  [ { zh: '再来一次！', ar: 'أعد المحاولة!' } ],  // < 60
+    perfect:   [ { zh: '太棒了！完全正确！', ar: 'ممتاز! صحيح تمامًا!' } ],   // =100 且逐字一致
+    excellent: [ { zh: '非常好！',           ar: 'رائع جدًا!' } ],            // 95–100（非完全一致）
+    good:      [ { zh: '很好！',             ar: 'جيد جدًا!' } ],             // 80–94
+    practice:  [ { zh: '过关！继续练习！',   ar: 'نجحت! واصل التدريب!' } ],   // 60–79
+    tryAgain:  [ { zh: '需要再练习，再来一次！', ar: 'تحتاج إلى مزيد من التدريب، حاول مرة أخرى!' } ],  // < 60
   };
 
   // 评分模式说明（用于 feedback 卡片中的 assessmentModeNote）
@@ -7058,12 +7640,47 @@ body.viewing-subs .state-subs { display: block; }
     if (ph) ph.classList.add('hidden');
 
     let tier, emoji, praise;
-    // 文案 4 档：≥90 / 75-89 / 60-74 / <60
-    // CSS 卡片样式仍沿用原有 3 档（excellent / good / try-again），颜色不变
-    if      (score >= 90) { tier = 'excellent'; emoji = '🌟'; praise = pickRandom(praiseLines.excellent); }
-    else if (score >= 75) { tier = 'good';      emoji = '👍'; praise = pickRandom(praiseLines.good);      }
-    else if (score >= 60) { tier = 'good';      emoji = '👍'; praise = pickRandom(praiseLines.pass);      }
-    else                  { tier = 'try-again'; emoji = '💪'; praise = pickRandom(praiseLines.tryAgain);  }
+    // ★ V3.10 等级 4 档：≥95 excellent / 80-94 good / 60-79 练习中(过关) / <60 需要再练习
+    // CSS 卡片样式仍沿用原有 3 档（excellent / good / try-again），颜色样式不变，
+    // 只调整档位边界与文案。
+    // ★ 等级↔分数↔逐字 绑定：
+    //   等级有且只有一个来源 —— 传入的最终 score
+    //   （= makeMockResult 输出的 pronunciationScore，绑定终检之后），
+    //   本函数不对分数做任何二次加工 ⇒ 等级必然与最终分数一致。
+    //   有 miss → 绑定终检已压到 ≤89 → 必然落在 good 及以下，
+    //   绝不可能进入 excellent（≥95），更不可能出现"完美"字样。
+    // ★ "完美/完全正确"文案闸门：
+    //   仅当 score === 100 且 result.exactMatch === true（识别文本与
+    //   目标句逐字完全一致）才使用 perfect 文案；其余 95-100 一律用
+    //   不含"完美/满分/完全正确"的 excellent 文案 ——
+    //   transcript 与 referenceText 不一致时绝不显示"完全正确"。
+    const isPerfect = score >= 100 && result && result.exactMatch === true;
+    if      (score >= 95) { tier = 'excellent'; emoji = '🌟';
+                            praise = isPerfect ? pickRandom(praiseLines.perfect)
+                                               : pickRandom(praiseLines.excellent); }
+    else if (score >= 80) { tier = 'good';      emoji = '👍'; praise = pickRandom(praiseLines.good);     }
+    else if (score >= 60) { tier = 'good';      emoji = '👍'; praise = pickRandom(praiseLines.practice); }
+    else                  { tier = 'try-again'; emoji = '💪'; praise = pickRandom(praiseLines.tryAgain); }
+
+    // DEBUG 自检：excellent（≥95）档里绝不该出现红/黄字；低分绝不该全绿；
+    // perfect 文案绝不该在非完全一致时出现。
+    // 正常流程不可能触发（绑定终检已保证），触发=评分链被改坏，报警。
+    if (DEBUG && result?.wordLevelFeedback?.length) {
+      try {
+        const wl = result.wordLevelFeedback;
+        const missN = wl.filter(w => w.errorType !== 'None' || w.accuracyScore < 80).length;
+        if (tier === 'excellent' && missN > 0) {
+          console.error('[等级↔逐字矛盾] excellent 档却有', missN, '个 miss/near', result);
+        }
+        if (isPerfect && result.exactMatch !== true) {
+          console.error('[等级↔文案矛盾] 非完全一致却用了 perfect 文案', result);
+        }
+        if (score < 75 && missN === 0 && (result.insertedChars || []).length === 0
+            && !result.exactMatch) {
+          console.error('[等级↔逐字矛盾] 低分却逐字全绿且无多字', result);
+        }
+      } catch(e) {}
+    }
 
     // 演示模式（result.demoMode === true）不得计入真实进度
     const isDemo = result && result.demoMode === true;
@@ -7132,6 +7749,28 @@ body.viewing-subs .state-subs { display: block; }
       tipHtml   = tip.html;
       tipSpoken = tip.spoken;
     }
+    // ★ V3.2：免费版识别估分的精准纠错提示（与扣分同源的对齐结果）：
+    //   漏读的字 / 多读的字直接点名，让"为什么没满分"一目了然。
+    //   只是显示文案，不影响 score / 通关 / 进度。
+    if (result?.source === 'fallback' && !result.demoMode && score < 100) {
+      const parts = [];
+      const missed = (result.wordLevelFeedback || [])
+        .filter(w => w.errorType === 'Omission').map(w => w.word);
+      const wrong  = (result.wordLevelFeedback || [])
+        .filter(w => w.errorType === 'Mispronunciation').map(w => w.word);
+      const order  = (result.wordLevelFeedback || [])
+        .filter(w => w.errorType === 'OrderError').map(w => w.word);
+      const ins    = result.insertedChars || [];
+      if (wrong.length)  parts.push(`「${wrong.slice(0, 5).join('、')}」没读对`);
+      if (missed.length) parts.push(`少读了「${missed.slice(0, 5).join('、')}」`);
+      if (order.length)  parts.push(`「${order.slice(0, 5).join('、')}」顺序不对`);
+      if (ins.length)    parts.push(`多读了「${ins.slice(0, 5).join('、')}」`);
+      if (parts.length) {
+        const note = parts.join('，') + '。';
+        tipHtml   = tipHtml ? (note + '<br>' + tipHtml) : note;
+        tipSpoken = tipSpoken || note;
+      }
+    }
     const tipEl = document.getElementById('fbTip');
     if (tipHtml) {
       document.getElementById('fbTipText').innerHTML = tipHtml;
@@ -7178,17 +7817,30 @@ body.viewing-subs .state-subs { display: block; }
   }
 
   // 逐字颜色块渲染
-  // ★ Azure 接入后，wlf 含真实 accuracyScore，优先使用
+  // ★ 优先使用 wordLevelFeedback（Azure 真实数据，或 fallback 路径里
+  //   makeMockResult 基于 _alignZh 对齐生成的逐字结果 —— 与扣分同源）。
+  //   无 wlf 时的兜底也改用同一份对齐：该字必须"按序"匹配才算识别到，
+  //   乱序/缺失不再被旧 includes() 误判成绿色。颜色与分数不可能打架。
   function renderCharFeedback(chars, score, transcript, wlf) {
     const container = document.getElementById('fbChars');
     container.innerHTML = '';
+    let fallbackOps = null;
+    if (!wlf) {
+      // 归一化统一由 _alignZh 入口完成（同一个 _normalizeZh，
+      // ref 端与 transcript 端同规则），这里不做任何自有清洗。
+      const refSeq = chars.map(c => c.hz).join('');
+      fallbackOps = _alignZh(refSeq, transcript || '').ops;
+    }
     chars.forEach((c, i) => {
       let quality;
       if (wlf && wlf[i]) {
         const s = wlf[i].accuracyScore;
         quality = s >= 80 ? 'ok' : s >= 55 ? 'near' : 'miss';
       } else {
-        quality = getCharQuality(c, i, score, transcript);
+        const op = fallbackOps && fallbackOps[i];
+        if (op && op.type === 'match')    quality = score >= 60 ? 'ok' : 'near';
+        else if (op && op.type === 'sub') quality = 'miss';   // 被识别成别的字
+        else                              quality = 'miss';   // 漏读 / 无对齐信息
       }
       const div = document.createElement('div');
       div.className = `fb-char ${quality}`;
@@ -7198,28 +7850,11 @@ body.viewing-subs .state-subs { display: block; }
     });
   }
 
-  // 去除随机抖动 — 学生重复念同一句子时，字级颜色应稳定
-  //   原 (Math.random()-0.5)*20 让"米"字这次绿、下次红，破坏信任。
-  //   改为基于汉字 code point 的确定性偏移：同字始终同色，
-  //   不同字之间仍有 ±6 的合理差异感（避免全部相同看起来死板）。
-  function _stableJitter(hz, range) {
-    // 汉字 code point 已是稳定整数，取 mod 映射到 [-range, +range]
-    const cp = hz.charCodeAt(0) || 0;
-    const span = range * 2 + 1;       // [-range, +range] 共 span 档
-    return (cp % span) - range;
-  }
-  function getCharQuality(charData, index, score, transcript) {
-    // 统一归一化：与评分流程同一个 _normalizeZh，
-    // 转写里的空格/标点/外文不影响"该字是否被识别到"的判断
-    const recognized = transcript && _normalizeZh(transcript).includes(charData.hz);
-    const base   = score + (recognized ? 8 : -10);
-    const offset = _stableJitter(charData.hz, 6);  // 确定性，无随机
-    const val    = base + offset;
-    return val >= 80 ? 'ok' : val >= 58 ? 'near' : 'miss';
-  }
+  // （旧 _stableJitter / getCharQuality 已删除：兜底着色统一改为
+  //   renderCharFeedback 内基于 _alignZh 的按序对齐判断，与评分同源。）
 
   function pickBestTip(chars, score) {
-    if (score >= 92) return { html: null, spoken: null };
+    if (score >= 95) return { html: null, spoken: null };  // excellent(≥95) 档不再给纠错建议
     const container = document.getElementById('fbChars');
     const charEls   = container ? Array.from(container.querySelectorAll('.fb-char')) : [];
     let targetIndex = charEls.findIndex(el => el.classList.contains('miss'));
