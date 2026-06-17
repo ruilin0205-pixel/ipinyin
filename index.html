@@ -135,6 +135,48 @@ body::before {
   border-top: 1px solid rgba(99,102,241,.08);
 }
 
+/* ── Bottom feedback link button (newly added, isolated styles) ── */
+.fb-form-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+.fb-form-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(99,102,241,.22);
+  background: rgba(255,255,255,.75);
+  color: var(--slate);
+  font-family: var(--font-py);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .18s ease, border-color .18s ease,
+              color .18s ease, transform .12s ease;
+}
+.fb-form-btn:hover {
+  background: var(--indigo-xlight);
+  border-color: var(--indigo-light);
+  color: var(--indigo);
+}
+.fb-form-btn:active { transform: translateY(1px); }
+.fb-form-btn svg {
+  width: 14px; height: 14px;
+  stroke: currentColor; fill: none;
+  stroke-width: 2; flex: 0 0 auto;
+}
+
 /* ── Card ───────────────────────────────────────────────────── */
 .card {
   width: 100%;
@@ -3199,6 +3241,18 @@ body.viewing-subs .state-subs { display: block; }
   </div><!-- /card -->
 
   </div><!-- /view-practice -->
+
+  <!-- Bottom feedback button (newly added) -->
+  <div class="fb-form-wrap">
+    <a class="fb-form-btn"
+       href="https://forms.office.com/r/FjPHiUGrU0"
+       target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span>反馈 / Feedback</span>
+    </a>
+  </div>
 
   <!-- Footer 署名 -->
   <footer class="page-footer">تصميم Lin Rui · 设计：Lin Rui</footer>
